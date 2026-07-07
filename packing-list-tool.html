@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Packing List Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --paper:#f8f6f1; --ink:#1c1917; --ink2:#6b6460; --ink3:#a8a29d;
+  --rule:#e5e0da; --rule2:#cdc8c2;
+  --amber:#b45309; --amber-l:#fef3c7; --amber-b:rgba(180,83,9,.2);
+  --green:#166534; --green-l:#f0fdf4; --green-b:rgba(22,101,52,.2);
+  --blue:#1e40af; --blue-l:#eff6ff; --blue-b:rgba(30,64,175,.15);
+  --red:#dc2626; --red-l:#fef2f2;
+  --surface:#fff; --surface2:#f2efe9;
+  /* grid */
+  --gh:28px; --gcol:#1c1917; --gcol-txt:#f8f6f1;
+  --gid:#92400e; --gid-l:#fffbeb;
+  --gborder:#ddd8d0;
+  /* per-PL meta columns (tracking, address) */
+  --violet:#5b21b6; --violet-l:#f5f3ff; --violet-b:rgba(91,33,182,.18);
+  --gviolet:#4c1d95; --gviolet-l:#ede9fe;
+}
+html{background:var(--paper);color:var(--ink);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.55;min-height:100vh;}
+body{display:flex;flex-direction:column;min-height:100vh;}
+
+/* ── Page shell ── */
+.page{max-width:1100px;margin:0 auto;padding:44px 28px 90px;width:100%;}
+
+/* ── Wordmark ── */
+.wm{display:flex;align-items:baseline;gap:10px;margin-bottom:40px;}
+.wm-t{font-family:'Instrument Serif',serif;font-size:24px;color:var(--ink);letter-spacing:-.01em;}
+.wm-t em{font-style:italic;color:var(--amber);}
+.wm-r{flex:1;height:1px;background:var(--rule2);}
+.wm-s{font-family:'DM Mono',monospace;font-size:10px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;}
+
+/* ── Steps ── */
+.steps{display:flex;align-items:center;margin-bottom:36px;}
+.si{display:flex;align-items:center;gap:9px;flex:1;}
+.si:last-child{flex:0;}
+.sn{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--rule2);display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-size:11px;color:var(--ink3);background:var(--paper);flex-shrink:0;transition:all .25s;}
+.si.active .sn{border-color:var(--amber);background:var(--amber);color:#fff;}
+.si.done .sn{border-color:var(--green);background:var(--green);color:#fff;}
+.sl{font-size:12px;color:var(--ink3);font-weight:500;white-space:nowrap;transition:color .25s;}
+.si.active .sl{color:var(--ink);}
+.si.done .sl{color:var(--green);}
+.sc{flex:1;height:1px;background:var(--rule);margin:0 10px;transition:background .3s;}
+.sc.done{background:var(--green);opacity:.4;}
+
+/* ── Panels ── */
+.panel{display:none;}
+.panel.active{display:block;animation:up .26s ease;}
+@keyframes up{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
+.eyebrow{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px;}
+.heading{font-family:'Instrument Serif',serif;font-size:28px;color:var(--ink);line-height:1.15;margin-bottom:6px;}
+.heading em{font-style:italic;color:var(--amber);}
+.desc{font-size:13px;color:var(--ink2);max-width:560px;line-height:1.72;margin-bottom:22px;}
+
+/* ── Upload zone ── */
+.uzone{border:1.5px dashed var(--rule2);border-radius:13px;background:var(--surface);padding:40px 24px;display:flex;flex-direction:column;align-items:center;gap:9px;cursor:pointer;transition:all .2s;text-align:center;position:relative;}
+.uzone:hover,.uzone.over{border-color:var(--amber);background:var(--amber-l);}
+.uzone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.ug{font-size:32px;line-height:1;margin-bottom:3px;}
+.um{font-family:'Instrument Serif',serif;font-size:18px;color:var(--ink);}
+.us{font-size:12px;color:var(--ink2);}
+.uh{font-family:'DM Mono',monospace;font-size:10px;color:var(--ink3);letter-spacing:.06em;}
+
+.fpill{display:none;align-items:center;gap:12px;padding:12px 16px;background:var(--green-l);border:1px solid var(--green-b);border-radius:9px;margin-top:12px;}
+.fpill.show{display:flex;}
+.fp-ic{color:var(--green);font-size:17px;flex-shrink:0;}
+.fp-nm{font-weight:600;font-size:13px;}
+.fp-mt{font-family:'DM Mono',monospace;font-size:10px;color:var(--ink2);margin-top:2px;}
+.fp-rm{margin-left:auto;background:none;border:none;color:var(--ink3);cursor:pointer;font-size:16px;line-height:1;transition:color .15s;}
+.fp-rm:hover{color:var(--red);}
+
+.ssel{display:none;align-items:center;gap:9px;margin-top:11px;flex-wrap:wrap;}
+.ssel.show{display:flex;}
+.ssel label{font-family:'DM Mono',monospace;font-size:11px;color:var(--ink2);}
+.ssel select{background:var(--surface);border:1px solid var(--rule2);border-radius:7px;padding:5px 11px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--ink);appearance:none;cursor:pointer;}
+.ssel select:focus{outline:none;border-color:var(--amber);}
+
+/* Detected template zones */
+.tpl-det{margin-top:16px;background:var(--surface);border:1px solid var(--rule);border-radius:11px;overflow:hidden;}
+.td-hdr{padding:10px 15px;background:var(--surface2);border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;}
+.td-hdr span{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);}
+.td-hdr strong{font-size:12px;color:var(--ink2);font-weight:500;}
+.td-bd{padding:12px 15px;display:flex;flex-direction:column;gap:9px;}
+.zrow{display:flex;align-items:flex-start;gap:10px;}
+.zbadge{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0;margin-top:1px;}
+.zbadge.h{background:var(--amber-l);color:var(--amber);border:1px solid var(--amber-b);}
+.zbadge.t{background:var(--green-l);color:var(--green);border:1px solid var(--green-b);}
+.ztxt{font-size:12px;color:var(--ink2);line-height:1.6;}
+.ztxt strong{color:var(--ink);font-weight:600;}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;}
+.chip{font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;background:var(--surface2);color:var(--ink2);border:1px solid var(--rule);}
+
+/* ═══════════════════════════════════════
+   SPREADSHEET GRID  (Step 2)
+═══════════════════════════════════════ */
+.grid-outer{
+  border:1px solid var(--gborder);border-radius:11px;
+  overflow:hidden;background:var(--surface);
+  box-shadow:0 1px 4px rgba(0,0,0,.06);
+}
+
+/* toolbar above grid */
+.grid-toolbar{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 12px;background:var(--surface2);
+  border-bottom:1px solid var(--gborder);flex-wrap:wrap;
+}
+.gt-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);}
+.gt-sel{font-family:'DM Mono',monospace;font-size:11px;background:var(--surface);border:1px solid var(--rule2);border-radius:6px;padding:4px 9px;color:var(--ink);appearance:none;cursor:pointer;}
+.gt-sel:focus{outline:none;border-color:var(--amber);}
+.gt-sep{width:1px;height:18px;background:var(--rule2);}
+.gt-info{font-size:11px;color:var(--ink3);margin-left:auto;}
+.gt-btn{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;padding:4px 10px;border-radius:6px;border:1px solid var(--rule2);background:var(--surface);color:var(--ink2);cursor:pointer;transition:all .15s;}
+.gt-btn:hover{border-color:var(--ink);color:var(--ink);}
+
+/* scroll wrapper */
+.grid-scroll{overflow:auto;max-height:420px;position:relative;}
+
+/* the actual table */
+.sgrid{border-collapse:collapse;font-family:'DM Mono',monospace;font-size:12px;table-layout:fixed;width:max-content;min-width:100%;}
+
+/* row-number column */
+.rn{
+  width:38px;min-width:38px;max-width:38px;
+  background:var(--surface2);border-right:1px solid var(--gborder);border-bottom:1px solid var(--gborder);
+  text-align:center;color:var(--ink3);font-size:10px;user-select:none;
+  position:sticky;left:0;z-index:3;padding:0;
+}
+thead .rn{background:var(--gcol);color:rgba(248,246,241,.35);border-color:rgba(255,255,255,.08);z-index:5;top:0;}
+
+/* header cells */
+.hcell{
+  background:var(--gcol);color:var(--gcol-txt);
+  border-right:1px solid rgba(255,255,255,.08);border-bottom:2px solid rgba(255,255,255,.12);
+  padding:6px 8px;font-size:11px;font-weight:500;letter-spacing:.03em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  cursor:default;position:sticky;top:0;z-index:4;user-select:none;
+}
+.hcell.id-hdr{background:var(--gid);color:#fff;}
+.hcell.meta-hdr{background:var(--gviolet);color:#ede9fe;}
+.hcell.is-tpl{background:#1a3022;color:#86efac;}
+.hcell.no-tpl{background:#3b1a12;color:#fca98a;}
+
+/* data cells */
+td.dc{
+  border-right:1px solid var(--gborder);border-bottom:1px solid var(--gborder);
+  padding:0;height:var(--gh);min-width:110px;max-width:200px;position:relative;
+}
+td.dc.id-cell{background:var(--gid-l);}
+td.dc.meta-cell{background:var(--gviolet-l);}
+td.dc input{
+  width:100%;height:100%;border:none;outline:none;
+  padding:4px 8px;font-family:'DM Mono',monospace;font-size:12px;
+  color:var(--ink);background:transparent;caret-color:var(--amber);
+}
+td.dc.id-cell input{color:var(--gid);font-weight:500;}
+td.dc.meta-cell input{color:var(--violet);font-weight:400;}
+td.dc input:focus{background:#faf8f3;}
+td.dc:focus-within{box-shadow:inset 0 0 0 2px var(--amber);z-index:1;}
+td.dc.meta-cell:focus-within{box-shadow:inset 0 0 0 2px var(--violet);}
+td.dc.selected-range{background:rgba(180,83,9,.07);}
+
+/* add-row footer */
+.grid-footer{border-top:2px solid var(--gborder);padding:6px 12px;background:var(--surface);}
+.add-row-btns{display:flex;gap:10px;}
+.arb{background:none;border:none;font-family:'DM Mono',monospace;font-size:10px;color:var(--ink3);cursor:pointer;letter-spacing:.06em;text-transform:uppercase;transition:color .15s;padding:2px 0;}
+.arb:hover{color:var(--amber);}
+
+/* group detection summary */
+.group-bar{
+  display:none;align-items:center;gap:10px;
+  margin-top:14px;padding:11px 14px;
+  background:var(--green-l);border:1px solid var(--green-b);border-radius:9px;
+  flex-wrap:wrap;
+}
+.group-bar.show{display:flex;}
+.gb-num{font-family:'Instrument Serif',serif;font-size:22px;color:var(--green);line-height:1;}
+.gb-lbl{font-size:12px;color:var(--green);}
+.gb-ids{display:flex;flex-wrap:wrap;gap:4px;margin-top:1px;}
+.gb-chip{font-family:'DM Mono',monospace;font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(22,101,52,.12);color:var(--green);border:1px solid var(--green-b);}
+
+/* column legend */
+.col-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;align-items:center;}
+.cl-item{display:flex;align-items:center;gap:5px;font-family:'DM Mono',monospace;font-size:10px;color:var(--ink2);}
+.cl-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+.col-hint.show{display:block;}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 20px;border-radius:8px;font-size:13.5px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;border:none;transition:all .18s;letter-spacing:-.01em;}
+.btn-ink{background:var(--ink);color:var(--paper);}
+.btn-ink:hover{background:#2d2926;transform:translateY(-1px);box-shadow:0 4px 14px rgba(28,25,23,.18);}
+.btn-green{background:var(--green);color:#fff;}
+.btn-green:hover{background:#14532d;transform:translateY(-1px);box-shadow:0 4px 14px rgba(22,101,52,.22);}
+.btn-out{background:transparent;color:var(--ink);border:1.5px solid var(--rule2);}
+.btn-out:hover{border-color:var(--ink);}
+.btn-lg{font-size:14px;padding:12px 24px;}
+.btn:disabled{opacity:.38;cursor:not-allowed;transform:none!important;box-shadow:none!important;}
+.brow{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:18px;}
+
+/* ── Messages ── */
+.msg{padding:9px 13px;border-radius:8px;font-size:12.5px;margin-top:10px;display:none;line-height:1.5;}
+.msg.show{display:block;}
+.msg-w{background:var(--amber-l);border:1px solid var(--amber-b);color:var(--amber);}
+.msg-ok{background:var(--green-l);border:1px solid var(--green-b);color:var(--green);}
+.msg-err{background:var(--red-l);border:1px solid rgba(220,38,38,.2);color:var(--red);}
+.msg-info{background:var(--blue-l);border:1px solid var(--blue-b);color:var(--blue);}
+
+/* ── Download panel ── */
+.sum-bar{display:flex;gap:20px;padding:14px 18px;background:var(--surface);border:1px solid var(--rule);border-radius:11px;margin-bottom:18px;flex-wrap:wrap;}
+.sv{font-family:'Instrument Serif',serif;font-size:25px;color:var(--green);line-height:1;}
+.sl2{font-family:'DM Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.07em;text-transform:uppercase;margin-top:2px;}
+
+.dl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;}
+.dl-card{background:var(--surface);border:1px solid var(--green-b);border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:5px;}
+.dl-id{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dl-rows{font-size:11px;color:var(--ink3);}
+.dl-btn{margin-top:5px;padding:6px 12px;border-radius:6px;background:var(--green-l);border:1px solid var(--green-b);color:var(--green);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;transition:all .15s;text-align:center;}
+.dl-btn:hover{background:var(--green);color:#fff;}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--paper);}
+::-webkit-scrollbar-thumb{background:var(--rule2);border-radius:3px;}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Wordmark -->
+  <div class="wm">
+    <div class="wm-t">Packing List <em>Generator</em></div>
+    <div class="wm-r"></div>
+    <div class="wm-s">Multi-PL Export</div>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps">
+    <div class="si active" id="si1"><div class="sn" id="sn1">1</div><div class="sl">Upload Template</div></div>
+    <div class="sc" id="sc1"></div>
+    <div class="si" id="si2"><div class="sn" id="sn2">2</div><div class="sl">Enter Data</div></div>
+    <div class="sc" id="sc2"></div>
+    <div class="si" id="si3"><div class="sn" id="sn3">3</div><div class="sl">Download</div></div>
+  </div>
+
+  <!-- ════════════════════════════
+       PANEL 1: Upload
+  ════════════════════════════ -->
+  <div class="panel active" id="p1">
+    <div class="eyebrow">Step 01 of 03</div>
+    <div class="heading">Upload your <em>template</em></div>
+    <div class="desc">Upload your .xlsx packing list template. All fonts, borders, merged cells and layout are preserved exactly — only the data cells are filled.</div>
+
+    <div class="uzone" id="uzone" ondragover="onDrag(event,true)" ondragleave="onDrag(event,false)" ondrop="onDrop(event)">
+      <input type="file" id="tplFile" accept=".xlsx" onchange="loadTpl(event)"/>
+      <div class="ug">📋</div>
+      <div class="um">Drop your template here</div>
+      <div class="us">or click to browse</div>
+      <div class="uh">.xlsx required for full style preservation</div>
+    </div>
+
+    <div class="fpill" id="fpill">
+      <div class="fp-ic">✓</div>
+      <div><div class="fp-nm" id="fname"></div><div class="fp-mt" id="fmeta"></div></div>
+      <button class="fp-rm" onclick="clearTpl()">✕</button>
+    </div>
+
+    <div class="ssel" id="ssel">
+      <label>Target sheet:</label>
+      <select id="sheetSel" onchange="onSheetChange()"></select>
+    </div>
+
+    <div class="tpl-det" id="tplDet" style="display:none">
+      <div class="td-hdr"><span>Detected structure</span><strong id="detNote"></strong></div>
+      <div class="td-bd" id="detBd"></div>
+    </div>
+
+    <div id="p1msg" class="msg"></div>
+    <div class="brow">
+      <button class="btn btn-ink" id="btn1" onclick="initGridAndGo()" disabled>Continue to data entry →</button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════
+       PANEL 2: Spreadsheet grid
+  ════════════════════════════ -->
+  <div class="panel" id="p2">
+    <div class="eyebrow">Step 02 of 03</div>
+    <div class="heading">Enter your <em>data</em></div>
+    <div class="desc">
+      Column headers load from your template. The <span style="font-family:'DM Mono',monospace;font-size:12px;background:var(--gid-l);color:var(--gid);padding:1px 6px;border-radius:4px;">PL Identifier</span> groups rows into separate files.
+      <span style="font-family:'DM Mono',monospace;font-size:12px;background:var(--gviolet-l);color:var(--violet);padding:1px 6px;border-radius:4px;">Tracking #</span> and <span style="font-family:'DM Mono',monospace;font-size:12px;background:var(--gviolet-l);color:var(--violet);padding:1px 6px;border-radius:4px;">Delivery Address</span> are per-PL — one value per group, written into the matching header label in your template.
+      Paste from Excel (<kbd style="font-family:'DM Mono',monospace;font-size:11px;padding:1px 5px;border:1px solid var(--rule2);border-radius:4px;background:var(--surface2)">Ctrl+V</kbd>) or type manually.
+    </div>
+
+    <div class="grid-outer">
+      <!-- Toolbar -->
+      <div class="grid-toolbar">
+        <span class="gt-label">PL identifier column:</span>
+        <select class="gt-sel" id="idColSel" onchange="onIdColChange()"></select>
+        <div class="gt-sep"></div>
+        <span class="gt-info" id="gtInfo">0 rows · 0 PLs</span>
+        <button class="gt-btn" onclick="clearGridData()">Clear data</button>
+      </div>
+
+      <!-- Scrollable grid -->
+      <div class="grid-scroll" id="gridScroll">
+        <table class="sgrid" id="sgrid">
+          <thead id="gridHead"></thead>
+          <tbody id="gridBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div class="grid-footer">
+        <div class="add-row-btns">
+          <button class="arb" onclick="addRows(5)">+ 5 rows</button>
+          <button class="arb" onclick="addRows(20)">+ 20 rows</button>
+          <button class="arb" onclick="addRows(50)">+ 50 rows</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Group detection -->
+    <div class="group-bar" id="groupBar">
+      <div>
+        <div class="gb-num" id="gbNum">0</div>
+        <div class="gb-lbl">packing lists detected</div>
+      </div>
+      <div class="gb-ids" id="gbIds"></div>
+    </div>
+
+    <!-- Column mapping hint -->
+    <div class="col-hint" id="colHint">
+      <span class="col-hint-label">Columns:</span>
+    </div>
+
+    <div id="p2msg" class="msg"></div>
+    <div class="brow">
+      <button class="btn btn-out" onclick="goStep(1)">← Back</button>
+      <button class="btn btn-green btn-lg" id="btn2" onclick="doGenerate()" disabled>Generate &amp; Download →</button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════
+       PANEL 3: Download
+  ════════════════════════════ -->
+  <div class="panel" id="p3">
+    <div class="eyebrow">Step 03 of 03</div>
+    <div class="heading">Your files are <em>ready</em></div>
+    <div class="desc">Each packing list is a filled copy of your template — fonts, borders, and merged cells exactly preserved.</div>
+
+    <div class="sum-bar" id="sumBar"></div>
+    <div class="dl-grid" id="dlGrid"></div>
+
+    <div id="p3msg" class="msg"></div>
+    <div class="brow">
+      <button class="btn btn-green btn-lg" id="btnZip" onclick="downloadAll()">⬇ Download all as ZIP</button>
+      <button class="btn btn-out" onclick="goStep(2)">← Back</button>
+      <button class="btn btn-out" onclick="resetAll()">Start over</button>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let tplBytes=null, tplWb=null, tplSheet=null, tplRows=[];
+let hdrLabels=[], colHeaders=[], dataHdrRow=0, dataStartR=0;
+
+// Grid state
+let gridCols=[];      // [{label, isTpl, tplColIdx}] — all columns in the grid incl. PL id col
+let gridData=[];      // [{col0, col1, ...}] values
+let idColIdx=0;       // which gridCol index is the PL identifier
+
+let colMap=[];        // built when generating: [{tplColIdx, tplText, gridIdx}]
+let generatedBlobs=new Map();
+
+const INIT_ROWS=30;
+
+// selection for copy/paste
+let selAnchor=null, selFocus=null; // {r,c}
+const TRACKING_COL_IDX=1;  // fixed col index in gridCols
+const ADDRESS_COL_IDX=2;   // fixed col index in gridCols
+
+// ═══════════════════════════════════════════
+// NAV
+// ═══════════════════════════════════════════
+function goStep(n){
+  [1,2,3].forEach(i=>{
+    document.getElementById('p'+i).classList.toggle('active',i===n);
+    const si=document.getElementById('si'+i);
+    si.className='si'+(i===n?' active':i<n?' done':'');
+    document.getElementById('sn'+i).textContent=i<n?'✓':String(i);
+    if(i<3) document.getElementById('sc'+i).classList.toggle('done',i<n);
+  });
+}
+
+// ═══════════════════════════════════════════
+// STEP 1: UPLOAD & ANALYSE
+// ═══════════════════════════════════════════
+function onDrag(e,on){e.preventDefault();document.getElementById('uzone').classList.toggle('over',on);}
+function onDrop(e){e.preventDefault();onDrag(e,false);processTpl(e.dataTransfer.files[0]);}
+function loadTpl(e){processTpl(e.target.files[0]);}
+
+function processTpl(file){
+  if(!file)return;
+  if(!/\.xlsx$/i.test(file.name)){showMsg('p1msg','err','Please upload a .xlsx file (required to preserve styles).');return;}
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      tplBytes=ev.target.result;
+      tplWb=XLSX.read(tplBytes,{type:'array',cellDates:true});
+      document.getElementById('fname').textContent=file.name;
+      document.getElementById('fmeta').textContent=tplWb.SheetNames.length+' sheet(s) · '+fmtB(file.size);
+      document.getElementById('fpill').classList.add('show');
+      document.getElementById('uzone').style.display='none';
+      const sel=document.getElementById('sheetSel');
+      sel.innerHTML=tplWb.SheetNames.map(n=>`<option>${esc(n)}</option>`).join('');
+      document.getElementById('ssel').classList.add('show');
+      onSheetChange();
+      showMsg('p1msg','','');
+    }catch(err){showMsg('p1msg','err','Could not read: '+err.message);}
+  };
+  r.readAsArrayBuffer(file);
+}
+
+function onSheetChange(){
+  tplSheet=document.getElementById('sheetSel').value;
+  analyzeTemplate();
+}
+
+function clearTpl(){
+  tplBytes=null;tplWb=null;tplSheet=null;tplRows=[];
+  hdrLabels=[];colHeaders=[];dataHdrRow=0;dataStartR=0;
+  document.getElementById('fpill').classList.remove('show');
+  document.getElementById('uzone').style.display='';
+  document.getElementById('ssel').classList.remove('show');
+  document.getElementById('tplDet').style.display='none';
+  document.getElementById('tplFile').value='';
+  document.getElementById('btn1').disabled=true;
+}
+
+function analyzeTemplate(){
+  const ws=tplWb.Sheets[tplSheet];
+  tplRows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  let bestRow=0,bestScore=0;
+  tplRows.forEach((row,i)=>{
+    const sc=row.filter(c=>typeof c==='string'&&c.trim().length>0);
+    const avg=sc.length?sc.reduce((a,c)=>a+c.trim().length,0)/sc.length:0;
+    const score=sc.length*(avg>35?.3:avg>20?.7:1.4);
+    if(score>bestScore){bestScore=score;bestRow=i;}
+  });
+  dataHdrRow=bestRow; dataStartR=bestRow+1;
+  colHeaders=(tplRows[bestRow]||[]).map((c,i)=>({text:String(c).trim(),colIdx:i,addr:encAddr(bestRow,i)})).filter(h=>h.text);
+  hdrLabels=[];
+  for(let ri=0;ri<bestRow;ri++){
+    (tplRows[ri]||[]).forEach((cell,ci)=>{
+      const txt=String(cell).trim(); if(!txt)return;
+      const hasColon=txt.endsWith(':')||txt.endsWith('：');
+      const nextEmpty=ci+1<(tplRows[ri]||[]).length&&String((tplRows[ri]||[])[ci+1]).trim()==='';
+      const isLabel=txt.length<45&&!txt.match(/^\d+$/)&&txt.split(' ').length<8;
+      if(hasColon||(nextEmpty&&isLabel)){
+        const label=txt.replace(/:+$/,'').replace(/：+$/,'').trim();
+        if(label) hdrLabels.push({label,rowIdx:ri,colIdx:ci+1,addr:encAddr(ri,ci+1)});
+      }
+    });
+  }
+  const seen=new Set();
+  hdrLabels=hdrLabels.filter(h=>{if(seen.has(h.addr))return false;seen.add(h.addr);return true;});
+  renderDetect();
+  document.getElementById('btn1').disabled=false;
+}
+
+function renderDetect(){
+  const bd=document.getElementById('detBd'); bd.innerHTML='';
+  document.getElementById('detNote').textContent=`${hdrLabels.length} header fields · ${colHeaders.length} data columns`;
+  if(hdrLabels.length) bd.innerHTML+=`<div class="zrow"><div class="zbadge h">Header area</div><div class="ztxt"><strong>${hdrLabels.length}</strong> label field${hdrLabels.length!==1?'s':''}<div class="chips">${hdrLabels.map(h=>`<div class="chip">${esc(h.label)}</div>`).join('')}</div></div></div>`;
+  if(colHeaders.length) bd.innerHTML+=`<div class="zrow"><div class="zbadge t">Data table</div><div class="ztxt"><strong>${colHeaders.length}</strong> columns · data starts row ${dataStartR+1}<div class="chips">${colHeaders.map(h=>`<div class="chip">${esc(h.text)}</div>`).join('')}</div></div></div>`;
+  document.getElementById('tplDet').style.display='block';
+}
+
+// ═══════════════════════════════════════════
+// STEP 2: BUILD GRID
+// ═══════════════════════════════════════════
+function initGridAndGo(){
+  buildGridColumns();
+  buildGridDOM();
+  goStep(2);
+}
+
+function buildGridColumns(){
+  // Fixed columns: PL Identifier | Tracking # | Delivery Address | ...template cols...
+  gridCols=[
+    {label:'PL Identifier',  isTpl:false, isMeta:false, tplColIdx:-1, metaKey:null},
+    {label:'Tracking #',     isTpl:false, isMeta:true,  tplColIdx:-1, metaKey:'tracking'},
+    {label:'Delivery Address',isTpl:false, isMeta:true,  tplColIdx:-1, metaKey:'address'},
+    ...colHeaders.map(h=>({label:h.text, isTpl:true, isMeta:false, tplColIdx:h.colIdx, metaKey:null}))
+  ];
+  idColIdx=0;
+
+  // Populate ID col selector
+  const sel=document.getElementById('idColSel');
+  sel.innerHTML=gridCols.map((c,i)=>`<option value="${i}">${esc(c.label)}</option>`).join('');
+  sel.value='0';
+}
+
+function buildGridDOM(){
+  const colW=Math.max(100,Math.min(180,Math.floor(1200/gridCols.length)));
+  // Header row
+  const head=document.getElementById('gridHead');
+  head.innerHTML='';
+  const tr=document.createElement('tr');
+  const rnth=document.createElement('th'); rnth.className='rn'; tr.appendChild(rnth);
+  gridCols.forEach((col,ci)=>{
+    const th=document.createElement('th');
+    th.className='hcell'+(ci===idColIdx?' id-hdr':col.isMeta?' meta-hdr':col.isTpl?' is-tpl':' no-tpl');
+    th.style.width=colW+'px';
+    th.title=col.label;
+    th.textContent=col.label;
+    tr.appendChild(th);
+  });
+  head.appendChild(tr);
+
+  // Clear body & data
+  gridData=[];
+  document.getElementById('gridBody').innerHTML='';
+  addRows(INIT_ROWS);
+
+  // Paste handler on scroll wrapper
+  const scroll=document.getElementById('gridScroll');
+  scroll.removeEventListener('paste',onGridPaste);
+  scroll.addEventListener('paste',onGridPaste);
+  scroll.removeEventListener('keydown',onGridKeydown);
+  scroll.addEventListener('keydown',onGridKeydown);
+
+  renderColHint();
+}
+
+function clearGridData(){
+  gridData=gridData.map(row=>{const r={};gridCols.forEach((_,i)=>r[i]='');return r;});
+  document.querySelectorAll('#gridBody input').forEach(inp=>{inp.value='';});
+  updateGroupBar();
+}
+
+function addRows(n){
+  const body=document.getElementById('gridBody');
+  const colW=Math.max(100,Math.min(180,Math.floor(1200/gridCols.length)));
+  for(let i=0;i<n;i++){
+    const rowObj={}; gridCols.forEach((_,ci)=>rowObj[ci]='');
+    gridData.push(rowObj);
+    const ri=gridData.length-1;
+    const tr=document.createElement('tr');
+    const rn=document.createElement('td'); rn.className='rn'; rn.textContent=ri+1; tr.appendChild(rn);
+    gridCols.forEach((col,ci)=>{
+      const td=document.createElement('td');
+      td.className='dc'+(ci===idColIdx?' id-cell':gridCols[ci]?.isMeta?' meta-cell':'');
+      td.dataset.r=ri; td.dataset.c=ci;
+      const inp=document.createElement('input');
+      inp.type='text'; inp.value='';
+      inp.setAttribute('data-r',ri); inp.setAttribute('data-c',ci);
+      inp.addEventListener('input',()=>{
+        gridData[ri][ci]=inp.value;
+        if(ci===idColIdx) updateGroupBar();
+        updateToolbarInfo();
+      });
+      inp.addEventListener('keydown',e=>onCellKey(e,ri,ci));
+      inp.addEventListener('focus',()=>selAnchor=selFocus={r:ri,c:ci});
+      td.appendChild(inp); tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  }
+}
+
+function onCellKey(e,ri,ci){
+  const all=document.querySelectorAll('#gridBody input');
+  const idx=ri*gridCols.length+ci;
+  if(e.key==='Tab'){e.preventDefault();const n=e.shiftKey?all[idx-1]:all[idx+1];if(n)n.focus();}
+  if(e.key==='Enter'){e.preventDefault();const n=all[idx+gridCols.length];if(n)n.focus();else addRows(5);}
+  if(e.key==='ArrowDown'){const n=all[idx+gridCols.length];if(n){e.preventDefault();n.focus();}}
+  if(e.key==='ArrowUp'){const n=all[idx-gridCols.length];if(n){e.preventDefault();n.focus();}}
+  if(e.key==='ArrowRight'&&!e.target.value){const n=all[idx+1];if(n){e.preventDefault();n.focus();}}
+  if(e.key==='ArrowLeft'&&!e.target.value){const n=all[idx-1];if(n){e.preventDefault();n.focus();}}
+}
+
+function onGridKeydown(e){
+  // Delete / Backspace on selection — handled per-cell by browser
+}
+
+// ─── PASTE HANDLER ──────────────────────────────────────────
+function onGridPaste(e){
+  e.preventDefault();
+  const text=(e.clipboardData||window.clipboardData).getData('text');
+  if(!text.trim()) return;
+
+  const sep=text.includes('\t')?'\t':',';
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const pastedAll=lines.map(l=>l.split(sep).map(c=>c.replace(/^"|"$/g,'').trim()));
+  if(!pastedAll.length) return;
+
+  // Detect if first row is a column header row matching our gridCols
+  const firstRow=pastedAll[0]||[];
+  const matchScore=firstRow.filter(cell=>
+    gridCols.some(gc=>gc.label.toLowerCase()===cell.toLowerCase()||fuzzy(gc.label,cell))
+  ).length;
+  const hasHdr=matchScore>=Math.max(1,Math.min(firstRow.length,2));
+
+  let pastedHdrs=hasHdr?firstRow:null;
+  let dataRows=hasHdr?pastedAll.slice(1):pastedAll;
+
+  // Build column mapping: pastedCol index → gridCol index
+  let pColToGrid;
+  if(pastedHdrs){
+    pColToGrid=pastedHdrs.map(ph=>{
+      // Exact match first
+      let gi=gridCols.findIndex(gc=>gc.label.toLowerCase()===ph.toLowerCase());
+      if(gi<0) gi=gridCols.findIndex(gc=>fuzzy(gc.label,ph));
+      return gi; // -1 = no match, will be dropped
+    });
+  } else {
+    // No header detected: fill left-to-right from focused cell column
+    const focused=document.querySelector('#gridBody input:focus');
+    const startC=focused?parseInt(focused.getAttribute('data-c')):0;
+    pColToGrid=dataRows[0].map((_,i)=>startC+i<gridCols.length?startC+i:-1);
+  }
+
+  // Find target start row
+  const focused=document.querySelector('#gridBody input:focus');
+  let startR=focused?parseInt(focused.getAttribute('data-r')):0;
+
+  // Ensure enough rows
+  const needed=startR+dataRows.length-gridData.length;
+  if(needed>0) addRows(Math.max(needed,10));
+
+  // Fill
+  dataRows.forEach((pr,ri)=>{
+    const gr=startR+ri;
+    pr.forEach((val,pi)=>{
+      const gi=pColToGrid[pi];
+      if(gi<0||gi>=gridCols.length) return;
+      gridData[gr][gi]=val;
+    });
+    // Update DOM
+    document.querySelectorAll(`#gridBody input[data-r="${gr}"]`).forEach(inp=>{
+      const c=parseInt(inp.getAttribute('data-c'));
+      inp.value=gridData[gr][c]||'';
+    });
+  });
+
+  updateGroupBar();
+  updateToolbarInfo();
+  showMsg('p2msg','ok',`Pasted ${dataRows.length} row${dataRows.length!==1?'s':''}.`);
+  setTimeout(()=>showMsg('p2msg','',''),2000);
+}
+
+// ─── GROUP DETECTION ─────────────────────────────────────────
+function onIdColChange(){
+  idColIdx=parseInt(document.getElementById('idColSel').value);
+  // Update header highlight
+  document.querySelectorAll('#gridHead .hcell').forEach((th,i)=>{
+    th.className='hcell'+(i===idColIdx?' id-hdr':gridCols[i]?.isMeta?' meta-hdr':gridCols[i]?.isTpl?' is-tpl':' no-tpl');
+  });
+  // Update cell backgrounds
+  document.querySelectorAll('#gridBody td.dc').forEach(td=>{
+    const ci=parseInt(td.dataset.c);
+    const isMeta=gridCols[ci]?.isMeta;
+    td.className='dc'+(ci===idColIdx?' id-cell':isMeta?' meta-cell':'');
+    const inp=td.querySelector('input');
+    if(inp){
+      inp.style.color=ci===idColIdx?'var(--gid)':isMeta?'var(--violet)':'';
+      inp.style.fontWeight=ci===idColIdx?'500':'';
+    }
+  });
+  updateGroupBar();
+  renderColHint();
+}
+
+function getFilledRows(){
+  return gridData.filter(row=>gridCols.some((_,ci)=>String(row[ci]||'').trim()));
+}
+
+function getGroups(){
+  const groups=new Map();
+  getFilledRows().forEach(row=>{
+    const id=String(row[idColIdx]||'').trim()||'(blank)';
+    if(!groups.has(id)) groups.set(id,[]);
+    groups.get(id).push(row);
+  });
+  return groups;
+}
+
+function updateGroupBar(){
+  const groups=getGroups();
+  const bar=document.getElementById('groupBar');
+  if(!groups.size){bar.classList.remove('show');document.getElementById('btn2').disabled=true;return;}
+  bar.classList.add('show');
+  document.getElementById('gbNum').textContent=groups.size;
+  const ids=document.getElementById('gbIds');
+  const entries=[...groups.entries()];
+  const shown=entries.slice(0,12);
+  ids.innerHTML=shown.map(([id,rows])=>`<div class="gb-chip">${esc(id)} <span style="opacity:.6">${rows.length}r</span></div>`).join('')+(entries.length>12?`<div class="gb-chip">+${entries.length-12} more</div>`:'');
+  document.getElementById('btn2').disabled=false;
+}
+
+function updateToolbarInfo(){
+  const filled=getFilledRows().length;
+  const groups=getGroups();
+  document.getElementById('gtInfo').textContent=`${filled} row${filled!==1?'s':''} · ${groups.size} PL${groups.size!==1?'s':''}`;
+}
+
+function renderColHint(){
+  const hint=document.getElementById('colHint');
+  if(!gridCols.length){hint.classList.remove('show');return;}
+  hint.classList.add('show');
+  hint.innerHTML=`
+    <div class="col-legend">
+      <div class="cl-item"><div class="cl-swatch" style="background:var(--gid)"></div>PL Identifier — groups rows into files</div>
+      <div class="cl-item"><div class="cl-swatch" style="background:var(--gviolet)"></div>Tracking # &amp; Address — written into template header labels</div>
+      <div class="cl-item"><div class="cl-swatch" style="background:#1a3022"></div>Template data columns — written into item rows</div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════
+// STEP 3: GENERATE
+// ═══════════════════════════════════════════
+async function doGenerate(){
+  const groups=getGroups();
+  if(!groups.size){showMsg('p2msg','w','No data to generate.');return;}
+  document.getElementById('btn2').disabled=true;
+  document.getElementById('btn2').textContent='Generating…';
+  showMsg('p2msg','info',`Building ${groups.size} packing list${groups.size!==1?'s':''}…`);
+  generatedBlobs.clear();
+  try{
+    for(const[id,rows] of groups){
+      generatedBlobs.set(id,await buildBlob(id,rows));
+    }
+    renderDlPanel();
+    goStep(3);
+    showMsg('p2msg','','');
+  }catch(err){
+    showMsg('p2msg','err','Error: '+err.message);
+    console.error(err);
+  }finally{
+    document.getElementById('btn2').disabled=false;
+    document.getElementById('btn2').textContent='Generate & Download →';
+  }
+}
+
+function renderDlPanel(){
+  let totalRows=0;
+  const g=getGroups();
+  generatedBlobs.forEach((_,id)=>{totalRows+=(g.get(id)||[]).length;});
+  document.getElementById('sumBar').innerHTML=`
+    <div><div class="sv">${generatedBlobs.size}</div><div class="sl2">Files generated</div></div>
+    <div><div class="sv">${totalRows}</div><div class="sl2">Total rows</div></div>
+    <div><div class="sv">${gridCols.filter(c=>c.isTpl).length}</div><div class="sl2">Columns filled</div></div>
+  `;
+  const grid=document.getElementById('dlGrid');
+  grid.innerHTML='';
+  generatedBlobs.forEach((blob,id)=>{
+    const rows=(g.get(id)||[]);
+    const tracking=String(rows[0]?.[TRACKING_COL_IDX]||'').trim();
+    const address =String(rows[0]?.[ADDRESS_COL_IDX]||'').trim();
+    const card=document.createElement('div'); card.className='dl-card';
+    card.innerHTML=
+      `<div class="dl-id" title="${esc(id)}">${esc(id)}</div>`+
+      `<div class="dl-rows">${rows.length} row${rows.length!==1?'s':''}</div>`+
+      (tracking?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--violet);margin-top:3px;">📦 ${esc(tracking)}</div>`:'')+
+      (address ?`<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--violet);margin-top:1px;">📍 ${esc(address.length>40?address.slice(0,40)+'…':address)}</div>`:'')+
+      `<div class="dl-btn" onclick="dlOne(${JSON.stringify(id)})">⬇ Download</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function dlOne(id){
+  const blob=generatedBlobs.get(id); if(!blob)return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=sanitize(id)+'.xlsx';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+async function downloadAll(){
+  if(!generatedBlobs.size)return;
+  const btn=document.getElementById('btnZip');
+  btn.disabled=true; btn.textContent='Zipping…';
+  try{
+    const zip=new JSZip();
+    generatedBlobs.forEach((blob,id)=>zip.file(sanitize(id)+'.xlsx',blob));
+    const zblob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(zblob); a.download='packing_lists.zip'; a.click(); URL.revokeObjectURL(a.href);
+  }finally{btn.disabled=false;btn.textContent='⬇ Download all as ZIP';}
+}
+
+// ═══════════════════════════════════════════
+// CORE: surgical XML injection
+// ═══════════════════════════════════════════
+async function buildBlob(plId, dataRows){
+  const zip=await JSZip.loadAsync(tplBytes);
+
+  // Locate sheet path
+  const wbXml=await zip.file('xl/workbook.xml').async('string');
+  const wbDoc=new DOMParser().parseFromString(wbXml,'text/xml');
+  const sheetEl=[...wbDoc.querySelectorAll('sheet')].find(s=>s.getAttribute('name')===tplSheet);
+  if(!sheetEl)throw new Error('Sheet not found');
+  const rId=sheetEl.getAttribute('r:id')||sheetEl.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
+  const relsXml=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const relsDoc=new DOMParser().parseFromString(relsXml,'text/xml');
+  const relEl=[...relsDoc.querySelectorAll('Relationship')].find(r=>r.getAttribute('Id')===rId);
+  if(!relEl)throw new Error('Rel not found');
+  const st=relEl.getAttribute('Target');
+  const sheetPath=st.startsWith('/')?st.slice(1):'xl/'+st;
+
+  // Shared strings
+  let ss=[];
+  const ssf=zip.file('xl/sharedStrings.xml');
+  if(ssf){ss=[...new DOMParser().parseFromString(await ssf.async('string'),'text/xml').querySelectorAll('si')].map(si=>[...si.querySelectorAll('t')].map(t=>t.textContent).join(''));}
+  const ssMap=new Map(ss.map((s,i)=>[s,i]));
+  function gss(str){if(ssMap.has(str))return ssMap.get(str);const i=ss.length;ss.push(str);ssMap.set(str,i);return i;}
+
+  // Build writes {addr->{v,isNum}}
+  const writes={};
+
+  // ── Meta columns: Tracking # and Delivery Address ──
+  // Take value from first data row for this PL group, write into best-matching header label cell
+  const trackingVal = String(dataRows[0]?.[TRACKING_COL_IDX]||'').trim();
+  const addressVal  = String(dataRows[0]?.[ADDRESS_COL_IDX]||'').trim();
+
+  // Find best-matching header label for tracking
+  const trackingLabel = hdrLabels.find(h=>fuzzy(h.label,'tracking number')||fuzzy(h.label,'tracking no')||fuzzy(h.label,'tracking')||fuzzy(h.label,'track no'));
+  const addressLabel  = hdrLabels.find(h=>fuzzy(h.label,'delivery address')||fuzzy(h.label,'ship to')||fuzzy(h.label,'address')||fuzzy(h.label,'consignee address')||fuzzy(h.label,'deliver to'));
+
+  if(trackingVal && trackingLabel) writes[trackingLabel.addr]={v:trackingVal,isNum:false};
+  if(addressVal  && addressLabel)  writes[addressLabel.addr] ={v:addressVal, isNum:false};
+
+  // ── Data rows — map gridCol (tplColIdx) to values ──
+  dataRows.forEach((rowObj,ri)=>{
+    const er=dataStartR+ri;
+    gridCols.forEach((gc,ci)=>{
+      if(!gc.isTpl)return; // skip PL id col and meta cols
+      const val=String(rowObj[ci]||'').trim();
+      if(!val)return;
+      const addr=encAddr(er,gc.tplColIdx);
+      const num=val!==''&&!isNaN(val)?Number(val):null;
+      writes[addr]={v:num!==null?num:val,isNum:num!==null};
+    });
+  });
+
+  if(!Object.keys(writes).length)throw new Error('No data to write for PL: '+plId);
+
+  // Patch sheet XML
+  const NS='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const sheetDoc=new DOMParser().parseFromString(await zip.file(sheetPath).async('string'),'text/xml');
+  const rowMap=new Map([...sheetDoc.getElementsByTagNameNS(NS,'row')].map(r=>[parseInt(r.getAttribute('r')),r]));
+  const sd=sheetDoc.getElementsByTagNameNS(NS,'sheetData')[0];
+
+  const byRow=new Map();
+  Object.entries(writes).forEach(([addr,val])=>{
+    const m=addr.match(/^([A-Z]+)(\d+)$/);if(!m)return;
+    const rn=parseInt(m[2]);
+    if(!byRow.has(rn))byRow.set(rn,{});
+    byRow.get(rn)[addr]=val;
+  });
+
+  byRow.forEach((cw,rn)=>{
+    let rowEl=rowMap.get(rn);
+    if(!rowEl){
+      rowEl=sheetDoc.createElementNS(NS,'row');rowEl.setAttribute('r',String(rn));rowMap.set(rn,rowEl);
+      let placed=false;
+      for(const ch of [...sd.childNodes]){
+        if(ch.nodeType===1&&ch.getAttribute&&parseInt(ch.getAttribute('r'))>rn){sd.insertBefore(rowEl,ch);placed=true;break;}
+      }
+      if(!placed)sd.appendChild(rowEl);
+    }
+    Object.entries(cw).forEach(([addr,{v,isNum}])=>{
+      const colStr=addr.match(/^([A-Z]+)/)[1];
+      const colN=colStr.split('').reduce((a,c)=>a*26+c.charCodeAt(0)-64,0);
+      let cellEl=[...rowEl.getElementsByTagNameNS(NS,'c')].find(c=>c.getAttribute('r')===addr);
+      if(!cellEl){
+        cellEl=sheetDoc.createElementNS(NS,'c');cellEl.setAttribute('r',addr);
+        let placed=false;
+        for(const sib of [...rowEl.getElementsByTagNameNS(NS,'c')]){
+          const sc2=sib.getAttribute('r').match(/^([A-Z]+)/)[1];
+          const sn=sc2.split('').reduce((a,c)=>a*26+c.charCodeAt(0)-64,0);
+          if(sn>colN){rowEl.insertBefore(cellEl,sib);placed=true;break;}
+        }
+        if(!placed)rowEl.appendChild(cellEl);
+      }
+      [...cellEl.childNodes].filter(ch=>ch.nodeType===1&&(ch.localName==='v'||ch.localName==='f')).forEach(ch=>cellEl.removeChild(ch));
+      if(isNum){
+        cellEl.removeAttribute('t');
+        const ve=sheetDoc.createElementNS(NS,'v');ve.textContent=String(v);cellEl.appendChild(ve);
+      }else{
+        cellEl.setAttribute('t','s');
+        const ve=sheetDoc.createElementNS(NS,'v');ve.textContent=String(gss(String(v)));cellEl.appendChild(ve);
+      }
+    });
+  });
+
+  // Update dimension
+  const dimEl=sheetDoc.getElementsByTagNameNS(NS,'dimension')[0];
+  if(dimEl){
+    const lastRow=dataStartR+dataRows.length;
+    const lastCol=Math.max(...gridCols.filter(c=>c.isTpl).map(c=>c.tplColIdx),0);
+    const orig=(dimEl.getAttribute('ref')||'A1').split(':')[0];
+    dimEl.setAttribute('ref',orig+':'+encAddr(lastRow,lastCol));
+  }
+
+  zip.file(sheetPath,new XMLSerializer().serializeToString(sheetDoc));
+  zip.file('xl/sharedStrings.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${ss.length}" uniqueCount="${ss.length}">`+
+    ss.map(s=>`<si><t${/^\s|\s$/.test(s)?' xml:space="preserve"':''}>${escXml(s)}</t></si>`).join('')+'</sst>');
+  const ctXml=await zip.file('[Content_Types].xml').async('string');
+  if(!ctXml.includes('sharedStrings'))
+    zip.file('[Content_Types].xml',ctXml.replace('</Types>','<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>'));
+  return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+}
+
+// ═══════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════
+function encCol(c){let s='';do{s=String.fromCharCode(c%26+65)+s;c=Math.floor(c/26)-1;}while(c>=0);return s;}
+function encAddr(r,c){return encCol(c)+(r+1);}
+
+function fuzzy(a,b){
+  const cl=s=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
+  const ca=cl(String(a)),cb=cl(String(b));
+  if(!ca||!cb)return false;
+  if(ca===cb||ca.includes(cb)||cb.includes(ca))return true;
+  const p=[
+    ['description','item'],['description','desc'],['description','product'],['description','name'],['description','goods'],['description','commodity'],
+    ['partno','sku'],['partno','pn'],['partno','model'],['partno','partnumber'],['partno','itemno'],['partno','itemcode'],
+    ['qty','quantity'],['qty','pcs'],['qty','count'],['qty','units'],['qty','pieces'],['qty','cartons'],['qty','ctns'],
+    ['unitweight','unitwt'],['netweight','nw'],['grossweight','gw'],
+    ['totalweight','grossweight'],['totalweight','totalwt'],['totalweight','netwt'],
+    ['length','len'],['width','wid'],['height','ht'],['height','hgt'],
+    ['cbm','volume'],['cbm','m3'],['cbm','cubicmeter'],
+    ['cartonno','cartonnumber'],['cartonno','ctnno'],['cartonno','boxno'],['cartonno','caseno'],
+    ['remarks','notes'],['remarks','comment'],
+    ['unitprice','price'],['unitprice','rate'],
+    ['amount','totalvalue'],['amount','value'],['amount','totalamount'],
+    ['hscode','hs'],['hscode','tariff'],['hscode','hts'],
+    ['countryoforigin','origin'],['countryoforigin','coo'],
+    ['shipper','exporter'],['consignee','receiver'],['consignee','buyer'],
+    ['invoiceno','invno'],['invoiceno','invoice'],
+    ['ponumber','po'],['ponumber','purchaseorder'],
+    ['shipdate','etd'],['shipdate','date'],
+    ['portofloading','pol'],['portofdischarge','pod'],
+    ['vessel','vesselname'],['vessel','ship'],
+  ];
+  for(const[x,y]of p){if((ca.includes(x)&&cb.includes(y))||(ca.includes(y)&&cb.includes(x)))return true;}
+  return false;
+}
+
+function sanitize(id){return String(id).replace(/[\/\\:*?"<>|]/g,'_').trim()||'packing_list';}
+function showMsg(id,type,text){const el=document.getElementById(id);if(!el)return;const m={warn:'msg-w',ok:'msg-ok',err:'msg-err',info:'msg-info'};el.className='msg'+(type&&m[type]?` ${m[type]} show`:'');el.textContent=text;}
+function fmtB(b){return b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB';}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escXml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+function resetAll(){
+  clearTpl();gridCols=[];gridData=[];idColIdx=0;generatedBlobs.clear();
+  document.getElementById('gridHead').innerHTML='';
+  document.getElementById('gridBody').innerHTML='';
+  document.getElementById('groupBar').classList.remove('show');
+  document.getElementById('colHint').classList.remove('show');
+  document.getElementById('btn2').disabled=true;
+  ['p1msg','p2msg','p3msg'].forEach(id=>showMsg(id,'',''));
+  goStep(1);
+}
+</script>
+</body>
+</html>
