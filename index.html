@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2C2F36">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ServiceTag">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%232C2F36"/><rect x="9" y="9" width="4.8" height="46" rx="2.4" fill="%232B36A8"/><circle cx="51" cy="13.5" r="3.5" fill="none" stroke="%23C9C5B8" stroke-width="1.8"/><text x="35" y="43" font-family="monospace" font-size="22" font-weight="bold" fill="%23ECEAE3" text-anchor="middle">S/T</text></svg>'>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script>
+/* Theme pre-paint: set light/dark before first render to avoid a flash */
+(function(){
+  try{
+    var t=localStorage.getItem("servicetag:theme");
+    if(!t) t=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light";
+    document.documentElement.dataset.theme=t;
+  }catch(e){}
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<title>ServiceTag — service-parts condition tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#191815; --graphite:#2C2F36; --paper:#ECEAE3; --surface:#FBFAF6;
+    --surface-2:#F3F1EA; --line:#D9D6CC; --line-2:#C9C5B8; --muted:#6E6B62;
+    --accent:#2B36A8; --accent-ink:#1B2374; --accent-soft:#E7E9FA;
+    --g-a:#2E7D32; --g-a-bg:#E4F0E2;
+    --g-b:#B07F14; --g-b-bg:#F5ECD2;
+    --g-c:#C2611C; --g-c-bg:#F6E5D6;
+    --g-d:#B23A2E; --g-d-bg:#F5DFDB;
+    --g-scrap:#5F5E5A; --g-scrap-bg:#E6E4DC;
+    --g-none:#8A877E; --g-none-bg:#EDEBE3;
+    --radius:7px; --radius-lg:11px;
+    --shadow:0 1px 0 rgba(25,24,21,.04), 0 6px 20px -12px rgba(25,24,21,.28);
+  }
+  [data-theme="dark"]{
+    --ink:#E9E7E0; --paper:#17181B; --surface:#212327; --surface-2:#282A2F;
+    --line:#33363C; --line-2:#44474F; --muted:#9C998F;
+    --accent:#8B96F0; --accent-ink:#A9B2F5; --accent-soft:#272C4E;
+    --g-a:#7FCB8C; --g-a-bg:#1F3323;
+    --g-b:#DCB65E; --g-b-bg:#382D12;
+    --g-c:#E1854A; --g-c-bg:#3A2413;
+    --g-d:#E2695C; --g-d-bg:#3B1B17;
+    --g-scrap:#A9A79F; --g-scrap-bg:#2E2F33;
+    --g-none:#8A877E; --g-none-bg:#26272B;
+    --shadow:0 1px 0 rgba(0,0,0,.2), 0 6px 20px -12px rgba(0,0,0,.6);
+  }
+  [data-theme="dark"] .pill.disp-needs-inspection{color:#DCB65E;background:#382D12;border-color:#54431C;}
+  [data-theme="dark"] .pill.disp-stock{color:var(--g-a);background:var(--g-a-bg);border-color:#2E4A32;}
+  [data-theme="dark"] .pill.disp-refurb{color:var(--accent);background:var(--accent-soft);border-color:#3A4170;}
+  [data-theme="dark"] .pill.disp-scrap{color:var(--g-scrap);background:var(--g-scrap-bg);border-color:#3E3F44;}
+  [data-theme="dark"] .oauth-btn{background:var(--surface);color:var(--ink);border-color:var(--line-2);}
+  [data-theme="dark"] .oauth-btn.apple{background:#000;color:#fff;border-color:#333;}
+  [data-theme="dark"] .row:hover td{background:var(--surface-2);}
+  .theme-toggle{
+    position:fixed;top:14px;right:14px;z-index:60;width:38px;height:38px;border-radius:50%;
+    border:1px solid var(--line-2);background:var(--surface);color:var(--ink);font-size:16px;
+    display:grid;place-items:center;box-shadow:var(--shadow);
+  }
+  .theme-toggle:hover{border-color:var(--muted);}
+  @media (max-width:860px){ .theme-toggle{top:auto;bottom:calc(16px + env(safe-area-inset-bottom));} }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:"IBM Plex Sans",system-ui,sans-serif; color:var(--ink);
+    background:var(--paper); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:"IBM Plex Mono",monospace;}
+  .disp{font-family:"Space Grotesk",sans-serif;}
+  h1,h2,h3{font-family:"Space Grotesk",sans-serif;font-weight:600;margin:0;line-height:1.2;letter-spacing:-.01em;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;font-size:15px;color:var(--ink);}
+  a{color:var(--accent);}
+  ::selection{background:var(--accent-soft);}
+
+  /* ---------- shell ---------- */
+  .app{display:grid;grid-template-columns:232px 1fr;min-height:100vh;}
+  .sidebar{
+    background:var(--graphite); color:#E8E6DF; padding:22px 16px;
+    display:flex;flex-direction:column;gap:26px;position:sticky;top:0;height:100vh;
+  }
+  .brand{display:flex;align-items:center;gap:11px;padding:0 6px;}
+  .brand-mark{
+    width:34px;height:34px;border-radius:8px;background:var(--paper);
+    display:grid;place-items:center;flex:none;position:relative;overflow:hidden;
+  }
+  .brand-mark::before{content:"";position:absolute;inset:0;border:2px solid var(--graphite);border-radius:8px;}
+  .brand-mark span{font-family:"IBM Plex Mono",monospace;font-weight:500;color:var(--graphite);font-size:15px;}
+  .brand-name{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:18px;letter-spacing:-.02em;color:#fff;}
+  .brand-sub{font-size:11px;color:#A7A49B;letter-spacing:.02em;margin-top:1px;}
+  .nav{display:flex;flex-direction:column;gap:3px;}
+  .nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.13em;color:#8E8B82;padding:0 10px;margin-bottom:6px;}
+  .nav-item{
+    display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--radius);
+    color:#CFCCC3;font-size:14.5px;font-weight:500;border:none;background:none;width:100%;text-align:left;
+    transition:background .12s,color .12s;
+  }
+  .nav-item:hover{background:rgba(255,255,255,.06);color:#fff;}
+  .nav-item.active{background:var(--paper);color:var(--graphite);}
+  .nav-item .ico{width:17px;flex:none;display:grid;place-items:center;}
+  .nav-item .ct{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:12px;opacity:.7;}
+  .nav-item.active .ct{color:var(--accent);opacity:1;}
+  .side-foot{margin-top:auto;font-size:11px;color:#85827A;padding:0 10px;line-height:1.5;}
+
+  .main{min-width:0;display:flex;flex-direction:column;}
+  .topbar{
+    display:flex;align-items:center;gap:16px;padding:18px 30px;border-bottom:1px solid var(--line);
+    background:var(--paper);position:sticky;top:0;z-index:5;
+  }
+  .topbar h1{font-size:21px;}
+  .topbar .crumb{font-size:13px;color:var(--muted);}
+  .topbar .spacer{flex:1;}
+  .content{padding:26px 30px 60px;max-width:1080px;width:100%;}
+
+  /* ---------- generic ---------- */
+  .btn{
+    display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--radius);
+    border:1px solid var(--line-2);background:var(--surface);color:var(--ink);font-weight:500;font-size:14px;
+    transition:border-color .12s,background .12s,transform .04s;
+  }
+  .btn:hover{border-color:var(--muted);}
+  .btn:active{transform:translateY(1px);}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn.primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);}
+  .btn.ghost{background:none;border-color:transparent;}
+  .btn.ghost:hover{background:var(--surface-2);}
+  .btn.danger{color:var(--g-d);border-color:#E4C7C2;}
+  .btn.danger:hover{background:var(--g-d-bg);border-color:var(--g-d);}
+  .btn.sm{padding:6px 11px;font-size:13px;}
+  .btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.nav-item:focus-visible,.row:focus-visible{
+    outline:2px solid var(--accent);outline-offset:2px;
+  }
+  label.field{display:block;margin-bottom:14px;}
+  label.field > span{display:block;font-size:12.5px;font-weight:500;color:var(--muted);margin-bottom:5px;letter-spacing:.01em;}
+  input[type=text],input[type=search],select,textarea{
+    width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--radius);
+    background:var(--surface);transition:border-color .12s;
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--accent);outline:none;}
+  textarea{resize:vertical;min-height:90px;line-height:1.55;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);}
+  .muted{color:var(--muted);}
+  .hr{height:1px;background:var(--line);border:none;margin:18px 0;}
+
+  /* ---------- chips ---------- */
+  .grade{
+    display:inline-flex;align-items:center;gap:5px;font-family:"Space Grotesk",sans-serif;font-weight:600;
+    font-size:12px;padding:2px 9px;border-radius:20px;letter-spacing:.02em;
+  }
+  .grade .dot{width:7px;height:7px;border-radius:50%;}
+  .grade.A{background:var(--g-a-bg);color:var(--g-a);} .grade.A .dot{background:var(--g-a);}
+  .grade.B{background:var(--g-b-bg);color:var(--g-b);} .grade.B .dot{background:var(--g-b);}
+  .grade.C{background:var(--g-c-bg);color:var(--g-c);} .grade.C .dot{background:var(--g-c);}
+  .grade.D{background:var(--g-d-bg);color:var(--g-d);} .grade.D .dot{background:var(--g-d);}
+  .grade.scrap{background:var(--g-scrap-bg);color:var(--g-scrap);} .grade.scrap .dot{background:var(--g-scrap);}
+  .grade.none{background:var(--g-none-bg);color:var(--g-none);border:1px dashed var(--g-none);padding:1px 8px;} .grade.none .dot{display:none;}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;padding:3px 10px;border-radius:6px;background:var(--surface-2);color:var(--muted);border:1px solid var(--line);}
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .pill.disp-needs-inspection{color:#9A6A0E;background:#F7EFD9;border-color:#E8D9AE;}
+  .pill.disp-stock{color:var(--g-a);background:var(--g-a-bg);border-color:#CDE3CB;}
+  .pill.disp-refurb{color:var(--accent);background:var(--accent-soft);border-color:#CDD3F2;}
+  .pill.disp-scrap{color:var(--g-scrap);background:var(--g-scrap-bg);border-color:#D6D3CA;}
+  .pill.disp-shipped{color:var(--muted);background:var(--surface-2);border-color:var(--line);}
+
+  /* ---------- dashboard ---------- */
+  .stat-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:26px;}
+  .stat{padding:16px 16px 15px;}
+  .stat .n{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:30px;line-height:1;letter-spacing:-.02em;}
+  .stat .l{font-size:12.5px;color:var(--muted);margin-top:7px;display:flex;align-items:center;gap:6px;}
+  .stat .l .dot{width:8px;height:8px;border-radius:50%;}
+  .section-h{display:flex;align-items:center;gap:10px;margin:6px 0 14px;}
+  .section-h h2{font-size:16px;}
+  .section-h .line{flex:1;height:1px;background:var(--line);}
+
+  .feed{display:flex;flex-direction:column;}
+  .feed-item{display:flex;gap:13px;padding:12px 4px;border-bottom:1px solid var(--line);}
+  .feed-item:last-child{border-bottom:none;}
+  .feed-when{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);white-space:nowrap;width:118px;flex:none;padding-top:1px;}
+  .feed-body{font-size:14px;min-width:0;}
+  .feed-body .sn{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--accent);font-weight:500;cursor:pointer;}
+  .feed-body .sn:hover{text-decoration:underline;}
+  .ev-type{font-weight:600;}
+
+  /* ---------- inventory table ---------- */
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+  .search-wrap{position:relative;flex:1;min-width:220px;}
+  .search-wrap input{padding-left:34px;}
+  .search-wrap .si{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:15px;pointer-events:none;}
+  .table{width:100%;border-collapse:separate;border-spacing:0;}
+  .table thead th{
+    text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+    font-weight:600;padding:0 14px 9px;
+  }
+  .row{cursor:pointer;}
+  .row td{background:var(--surface);padding:13px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);vertical-align:middle;}
+  .row td:first-child{border-left:1px solid var(--line);border-radius:var(--radius) 0 0 var(--radius);}
+  .row td:last-child{border-right:1px solid var(--line);border-radius:0 var(--radius) var(--radius) 0;}
+  .table tbody tr.spacer td{border:none;background:none;height:7px;padding:0;}
+  .row:hover td{background:#fff;border-color:var(--line-2);}
+  .row .sn{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:14px;}
+  .row .desc{font-size:13.5px;color:var(--muted);margin-top:2px;}
+  .flag{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--g-d);margin-right:7px;vertical-align:middle;}
+
+  .empty{text-align:center;padding:54px 20px;color:var(--muted);}
+  .empty .disp{font-size:18px;color:var(--ink);margin-bottom:7px;}
+
+  /* ---------- unit detail / service tag ---------- */
+  .back{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13.5px;background:none;border:none;padding:4px 0;margin-bottom:14px;}
+  .back:hover{color:var(--ink);}
+  .tag{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);
+    padding:22px 24px;position:relative;overflow:hidden;
+  }
+  .tag::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent);}
+  .tag .punch{position:absolute;top:16px;right:20px;width:15px;height:15px;border-radius:50%;border:2px solid var(--line-2);background:var(--paper);}
+  .tag .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--muted);margin-bottom:6px;}
+  .tag .sn-big{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:26px;letter-spacing:-.01em;}
+  .tag .desc{font-size:15px;color:var(--ink);margin-top:4px;}
+  .tag-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;align-items:center;}
+  .meta-block{display:flex;flex-direction:column;gap:5px;}
+  .meta-block .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+
+  .detail-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:22px;margin-top:22px;align-items:start;}
+
+  /* timeline — the signature */
+  .timeline-h{display:flex;align-items:baseline;gap:9px;margin-bottom:4px;}
+  .timeline-h h2{font-size:16px;}
+  .timeline-h .cnt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);}
+  .tl{position:relative;padding-left:24px;margin-top:14px;}
+  .tl::before{content:"";position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:var(--line);}
+  .tl-entry{position:relative;padding:0 0 20px;}
+  .tl-entry:last-child{padding-bottom:2px;}
+  .tl-entry::before{
+    content:"";position:absolute;left:-22px;top:3px;width:11px;height:11px;border-radius:50%;
+    background:var(--surface);border:2.5px solid var(--accent);
+  }
+  .tl-entry.t-received::before{border-color:var(--muted);}
+  .tl-entry.t-shipped::before{border-color:var(--g-scrap);}
+  .tl-entry.t-graded::before,.tl-entry.t-inspected::before{border-color:var(--g-b);}
+  .tl-when{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);}
+  .tl-head{display:flex;align-items:center;gap:8px;margin:2px 0 4px;flex-wrap:wrap;}
+  .tl-type{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13.5px;text-transform:capitalize;}
+  .tl-note{font-size:14px;color:var(--ink);}
+  .tl-changes{display:flex;gap:7px;flex-wrap:wrap;margin-top:7px;}
+  .tl-by{font-size:12px;color:var(--muted);margin-top:5px;}
+
+  .logbox{padding:18px;}
+  .logbox h3{font-size:14.5px;margin-bottom:14px;}
+  .grade-pick{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:5px;}
+  .gp{border:1px solid var(--line-2);background:var(--surface);border-radius:20px;padding:5px 13px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;color:var(--muted);}
+  .gp:hover{border-color:var(--muted);}
+  .gp.sel{color:#fff;}
+  .gp.sel.A{background:var(--g-a);border-color:var(--g-a);}
+  .gp.sel.B{background:var(--g-b);border-color:var(--g-b);}
+  .gp.sel.C{background:var(--g-c);border-color:var(--g-c);}
+  .gp.sel.D{background:var(--g-d);border-color:var(--g-d);}
+  .gp.sel.scrap{background:var(--g-scrap);border-color:var(--g-scrap);}
+
+  /* receive / ship */
+  .seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--radius);overflow:hidden;margin-bottom:18px;}
+  .seg button{padding:8px 16px;border:none;background:var(--surface);color:var(--muted);font-weight:500;font-size:14px;}
+  .seg button.on{background:var(--accent);color:#fff;}
+  .form-card{padding:22px;max-width:560px;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .ship-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;}
+
+  .pick{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:8px;}
+  .pick .sn{font-family:"IBM Plex Mono",monospace;font-weight:500;}
+  .pick-empty{padding:22px;border:1px dashed var(--line-2);border-radius:var(--radius);color:var(--muted);text-align:center;}
+  .addrow{display:flex;align-items:center;gap:8px;padding:9px 13px;border-bottom:1px solid var(--line);}
+  .addrow:hover{background:var(--surface-2);cursor:pointer;}
+  .addrow .sn{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:14px;}
+
+  /* audit */
+  .audit-wrap{max-width:520px;margin:0 auto;}
+  .scan{position:relative;margin-bottom:20px;}
+  .scan input{
+    font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:500;padding:18px 18px 18px 50px;
+    border:2px solid var(--line-2);border-radius:var(--radius-lg);background:var(--surface);letter-spacing:.02em;
+  }
+  .scan input:focus{border-color:var(--accent);}
+  .scan .si{position:absolute;left:18px;top:50%;transform:translateY(-50%);font-size:21px;color:var(--accent);}
+  .scan-hint{font-size:12.5px;color:var(--muted);text-align:center;margin-top:9px;}
+  .audit-card{padding:20px;}
+  .quick-grade{margin:16px 0 8px;}
+
+  /* locations */
+  .loc-row{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:9px;}
+  .loc-row .nm{font-weight:500;display:flex;align-items:center;gap:9px;}
+  .loc-row .cnt{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--muted);}
+
+  /* toast */
+  .toast{
+    position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(12px);
+    background:var(--graphite);color:#fff;padding:11px 18px;border-radius:var(--radius);font-size:14px;font-weight:500;
+    box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;
+    display:flex;align-items:center;gap:9px;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast .ok{width:8px;height:8px;border-radius:50%;background:#7CD389;}
+
+  .mobile-nav{display:none;}
+
+  .login{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:var(--paper);padding:26px;z-index:100;}
+  .login.show{display:flex;}
+  .login-card{width:100%;max-width:368px;text-align:center;}
+  .login-brand{display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:6px;}
+  .login .brand-mark{background:var(--graphite);}
+  .login .brand-mark::before{display:none;}
+  .login .brand-mark span{color:var(--paper);}
+  .login-lede{color:var(--muted);font-size:14.5px;line-height:1.55;margin:16px 0 24px;}
+  .oauth-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 16px;border-radius:var(--radius);font-family:"IBM Plex Sans",sans-serif;font-weight:500;font-size:15px;margin-bottom:10px;border:1px solid var(--line-2);background:#fff;color:#2b2b2b;transition:border-color .12s,background .12s;}
+  .oauth-btn:hover{border-color:var(--muted);}
+  .oauth-btn.apple{background:#000;color:#fff;border-color:#000;}
+  .oauth-btn.apple:hover{background:#1a1a1a;}
+  .login-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:16px 2px;}
+  .login-divider::before,.login-divider::after{content:"";height:1px;background:var(--line);flex:1;}
+  .guest{background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;padding:6px;}
+  .guest:hover{text-decoration:underline;}
+  .login-fine{font-size:11.5px;color:var(--muted);margin-top:22px;line-height:1.6;}
+
+  @media (max-width:860px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{display:none;}
+    .mobile-nav{
+      display:flex;position:sticky;top:0;z-index:8;background:var(--graphite);
+      overflow-x:auto;padding:8px 10px;gap:4px;
+    }
+    .mobile-nav button{flex:none;border:none;background:none;color:#CFCCC3;font-weight:500;font-size:13.5px;padding:7px 12px;border-radius:6px;white-space:nowrap;}
+    .mobile-nav button.active{background:var(--paper);color:var(--graphite);}
+    .topbar{padding:14px 18px;}
+    .content{padding:18px 18px 70px;}
+    .stat-row{grid-template-columns:repeat(2,1fr);}
+    .detail-grid{grid-template-columns:1fr;}
+    .two{grid-template-columns:1fr;}
+    .ship-grid{grid-template-columns:1fr;gap:16px;}
+    .gp{min-height:42px;min-width:52px;}
+    .btn{padding:11px 16px;}
+    .btn.sm{padding:8px 13px;}
+    .mobile-nav{padding-top:calc(8px + env(safe-area-inset-top));}
+    .mobile-nav button{padding:10px 13px;}
+    .content{padding-bottom:calc(84px + env(safe-area-inset-bottom));}
+    .feed-when{width:auto;}
+    .feed-item{flex-direction:column;gap:3px;}
+    /* tables -> stacked */
+    .table thead{display:none;}
+    .table,.table tbody,.row,.row td{display:block;width:100%;}
+    .row td{border:1px solid var(--line)!important;border-radius:var(--radius)!important;margin-bottom:9px;padding:12px 14px;}
+    .row td:not(:first-child){border-top:none!important;}
+    .table tbody tr.spacer{display:none;}
+    .row td[data-h]::before{content:attr(data-h);display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="theme-toggle" title="Light / dark mode" aria-label="Toggle light or dark mode">◐</button>
+<div class="login" id="login">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-mark"><span>S/T</span></div>
+      <div style="text-align:left;">
+        <div class="brand-name" style="color:var(--ink);">ServiceTag</div>
+        <div class="brand-sub" style="color:var(--muted);">every unit has a history</div>
+      </div>
+    </div>
+    <p class="login-lede">Track each unit's condition and history — from intake to ship.</p>
+    <button class="oauth-btn" id="li-google">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Continue with Google
+    </button>
+    <button class="oauth-btn apple" id="li-apple">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M17.05 12.04c-.03-2.6 2.13-3.85 2.22-3.91-1.21-1.77-3.1-2.01-3.77-2.04-1.6-.16-3.13.94-3.94.94-.81 0-2.07-.92-3.4-.9-1.75.03-3.36 1.02-4.26 2.58-1.82 3.16-.47 7.84 1.3 10.41.86 1.26 1.89 2.67 3.24 2.62 1.3-.05 1.79-.84 3.36-.84 1.57 0 2.01.84 3.39.81 1.4-.03 2.29-1.28 3.15-2.55.99-1.46 1.4-2.87 1.42-2.95-.03-.01-2.72-1.04-2.75-4.13zM14.5 4.5c.72-.87 1.2-2.08 1.07-3.28-1.03.04-2.28.69-3.02 1.56-.66.77-1.24 2-1.08 3.18 1.15.09 2.32-.58 3.03-1.46z"/></svg>
+      Continue with Apple
+    </button>
+    <div class="login-divider">or</div>
+    <button class="guest" id="li-guest">Continue without an account</button>
+    <p class="login-fine" id="login-fine">Without an account, your data stays only on this device.<br>Prototype — Google and Apple sign-in are simulated until the backend is connected.</p>
+  </div>
+</div>
+<div class="app" style="display:none">
+  <aside class="sidebar">
+    <nav class="nav" id="nav">
+      <div class="nav-label">Floor</div>
+      <button class="nav-item" data-view="dashboard"><span class="ico">▦</span> Dashboard</button>
+      <button class="nav-item" data-view="inventory"><span class="ico">≡</span> Inventory <span class="ct" id="nav-inv"></span></button>
+      <button class="nav-item" data-view="audit"><span class="ico">⊹</span> Audit</button>
+      <div class="nav-label" style="margin-top:14px;">Move stock</div>
+      <button class="nav-item" data-view="receive"><span class="ico">↓</span> Receive</button>
+      <button class="nav-item" data-view="ship"><span class="ico">↑</span> Ship</button>
+      <div class="nav-label" style="margin-top:14px;">Setup</div>
+      <button class="nav-item" data-view="locations"><span class="ico">◫</span> Locations</button>
+    </nav>
+    <div class="side-foot"><div id="account-foot"></div></div>
+  </aside>
+
+  <div class="main">
+    <div class="mobile-nav" id="mnav"></div>
+    <div class="topbar">
+      <h1 id="page-title">Dashboard</h1>
+      <span class="crumb" id="crumb"></span>
+      <div class="spacer"></div>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+<div class="toast" id="toast"><span class="ok"></span><span id="toast-msg"></span></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+   * BACKEND CONFIG — the only two lines you edit to make
+   * Google/Apple sign-in and cloud sync REAL.
+   * Get both from: Supabase dashboard → Project Settings → API.
+   * Leave blank to keep everything on-device (guest mode).
+   * ============================================================ */
+  const SUPABASE_URL = "";        // e.g. "https://abcdefgh.supabase.co"
+  const SUPABASE_ANON_KEY = "";   // the long "anon public" key
+  /* To make Google/Apple sign-in REAL:
+   *  1. Create a free project at supabase.com and run servicetag-schema.sql
+   *  2. Project Settings → API → copy the URL and anon public key above
+   *  3. Authentication → Providers → enable Google (and later Apple)
+   *  4. Authentication → URL Configuration → add your deployed URL
+   * Leave these empty and the buttons stay in simulated mode. */
+
+  const BACKEND = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
+  const sb = BACKEND ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY,
+    { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true } }) : null;
+  let cloudMode = false;   // true once signed in through Supabase
+
+  /* ---------------- storage adapter ---------------- */
+  const KEY="servicetag:v1";
+  const Store={
+    async load(){
+      try{
+        if(window.storage){ const r=await window.storage.get(KEY); return r&&r.value?JSON.parse(r.value):null; }
+        const v=localStorage.getItem(KEY); return v?JSON.parse(v):null;
+      }catch(e){ return null; }
+    },
+    async save(d){
+      try{
+        if(window.storage){ await window.storage.set(KEY,JSON.stringify(d)); return; }
+        localStorage.setItem(KEY,JSON.stringify(d));
+      }catch(e){}
+    }
+  };
+  let saveT=null;
+  function persist(){ if(cloudMode) return; clearTimeout(saveT); saveT=setTimeout(()=>Store.save(state),350); }
+
+  /* ---------------- helpers ---------------- */
+  const uid=()=>Math.random().toString(36).slice(2,9);
+  const now=()=>Date.now();
+  const daysAgo=(d,h=0)=> now()-(d*86400000)-(h*3600000);
+  function fmt(ts){
+    const dt=new Date(ts);
+    const mo=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][dt.getMonth()];
+    const hh=String(dt.getHours()).padStart(2,"0"), mm=String(dt.getMinutes()).padStart(2,"0");
+    return `${mo} ${dt.getDate()} · ${hh}:${mm}`;
+  }
+  const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const GRADES=["A","B","C","D","scrap"];
+  const gradeLabel={A:"A · like new",B:"B · good",C:"C · functional",D:"D · faulty",scrap:"scrap",none:"ungraded"};
+  const DISP=["needs-inspection","stock","refurb","scrap","shipped"];
+  const dispLabel={"needs-inspection":"needs inspection","stock":"in stock","refurb":"refurb","scrap":"scrap","shipped":"shipped"};
+
+  function gradeChip(g){ g=g||"none"; const cls=g==="none"?"none":g; return `<span class="grade ${cls}"><span class="dot"></span>${g==="none"?"ungraded":g}</span>`; }
+  function dispPill(d){ return `<span class="pill disp-${d}"><span class="dot"></span>${dispLabel[d]||d}</span>`; }
+  function locName(id){ if(!id) return "Unassigned"; const l=state.locations.find(x=>x.id===id); return l?l.name:"Unassigned"; }
+
+  /* ---------------- state ---------------- */
+  let state={locations:[],units:[],view:"dashboard",unitId:null,filter:{q:"",grade:"",disp:""},pick:[],session:null};
+
+  /* ---------------- toast ---------------- */
+  let toastT=null;
+  function toast(msg){
+    const t=document.getElementById("toast");
+    document.getElementById("toast-msg").textContent=msg;
+    t.classList.add("show"); clearTimeout(toastT);
+    toastT=setTimeout(()=>t.classList.remove("show"),2300);
+  }
+
+  /* ---------------- cloud layer (only used when signed in via Supabase) ---------------- */
+  function mapDbEvent(e){ return { ts:new Date(e.created_at).getTime(), type:e.event_type, by:e.created_by||"You",
+    note:e.note||"", grade:e.grade||undefined, disposition:e.disposition||undefined, location:e.location_id||"" }; }
+  function mapDbUnit(u){
+    const events=(u.unit_events||[]).map(mapDbEvent).sort((a,b)=>a.ts-b.ts);
+    return { id:u.id, sn:u.sn, sku:u.sku||"", desc:u.description||"", grade:u.grade||"none",
+      disposition:u.disposition, location:u.location_id||"", createdAt:new Date(u.created_at).getTime(), events };
+  }
+  async function cloudLoadAll(){
+    const [locsRes, unitsRes] = await Promise.all([
+      sb.from("locations").select("*").order("created_at"),
+      sb.from("units").select("*, unit_events(*)").order("created_at",{ascending:false})
+    ]);
+    if(locsRes.error) throw locsRes.error;
+    if(unitsRes.error) throw unitsRes.error;
+    state.locations=(locsRes.data||[]).map(l=>({id:l.id,name:l.name}));
+    state.units=(unitsRes.data||[]).map(mapDbUnit);
+  }
+  async function cloudAddLocation(name){
+    const {data,error}=await sb.from("locations").insert({name}).select().single();
+    if(error) throw error;
+    return {id:data.id,name:data.name};
+  }
+  async function cloudDeleteLocation(id){
+    const {error}=await sb.from("locations").delete().eq("id",id);
+    if(error) throw error;
+  }
+  async function cloudReceiveUnits(sns,common){
+    const rows=sns.map(sn=>({sn,sku:common.sku||"",description:common.desc||"",grade:"none",
+      disposition:"needs-inspection",location_id:common.location||null}));
+    const {data:created,error}=await sb.from("units").insert(rows).select();
+    if(error) throw error;
+    const events=created.map(u=>({unit_id:u.id,event_type:"received",
+      note:common.ref?`Received · ${common.ref}`:"Received",disposition:"needs-inspection",location_id:common.location||null}));
+    const {error:ee}=await sb.from("unit_events").insert(events);
+    if(ee) throw ee;
+    const nowTs=now();
+    return created.map(u=>({ id:u.id, sn:u.sn, sku:u.sku||"", desc:u.description||"", grade:"none",
+      disposition:"needs-inspection", location:u.location_id||"", createdAt:nowTs,
+      events:[{ts:nowTs,type:"received",by:"You",note:common.ref?`Received · ${common.ref}`:"Received",
+               disposition:"needs-inspection",location:common.location||""}] }));
+  }
+  async function cloudAddEvent(unitId,ev,patch){
+    const {error:ee}=await sb.from("unit_events").insert({unit_id:unitId,event_type:ev.type,
+      note:ev.note||"",grade:ev.grade||null,disposition:ev.disposition||null,location_id:ev.location||null});
+    if(ee) throw ee;
+    if(Object.keys(patch).length){
+      const {error}=await sb.from("units").update(patch).eq("id",unitId);
+      if(error) throw error;
+    }
+  }
+  async function cloudShipUnits(ids,note){
+    const events=ids.map(id=>({unit_id:id,event_type:"shipped",note,disposition:"shipped"}));
+    const {error:ee}=await sb.from("unit_events").insert(events);
+    if(ee) throw ee;
+    const {error}=await sb.from("units").update({disposition:"shipped"}).in("id",ids);
+    if(error) throw error;
+  }
+  // Uploads locations+units (with full event history) into the signed-in account.
+  async function cloudBulkUpload(locations,units){
+    const locMap={};
+    if(locations&&locations.length){
+      const {data:newLocs,error}=await sb.from("locations").insert(locations.map(l=>({name:l.name}))).select();
+      if(error) throw error;
+      locations.forEach((old,i)=>{locMap[old.id]=newLocs[i].id;});
+    }
+    if(!units||!units.length) return;
+    const rows=units.map(u=>({sn:u.sn,sku:u.sku||"",description:u.desc||"",grade:u.grade||"none",
+      disposition:u.disposition,location_id:locMap[u.location]||null,created_at:new Date(u.createdAt).toISOString()}));
+    const {data:newUnits,error:ue}=await sb.from("units").insert(rows).select();
+    if(ue) throw ue;
+    const eventRows=[];
+    units.forEach((u,i)=>{(u.events||[]).forEach(e=>eventRows.push({unit_id:newUnits[i].id,event_type:e.type,
+      note:e.note||"",grade:e.grade||null,disposition:e.disposition||null,location_id:locMap[e.location]||null,
+      created_by:e.by||"You",created_at:new Date(e.ts).toISOString()}));});
+    if(eventRows.length){
+      const {error:ee}=await sb.from("unit_events").insert(eventRows);
+      if(ee) throw ee;
+    }
+  }
+  function syncFail(err){ console.error(err); toast("⚠ Cloud sync failed — check connection"); }
+
+  /* ---------------- mutations ---------------- */
+  function addEvent(unitId,p){
+    const u=state.units.find(x=>x.id===unitId); if(!u) return;
+    let type=p.type;
+    if(!type){
+      if(p.grade&&u.grade==="none") type="inspected";
+      else if(p.grade) type="graded";
+      else if(p.location&&!p.note) type="moved";
+      else type="note";
+    }
+    const ev={ts:now(),type,by:"You",note:p.note||"",grade:p.grade||undefined,disposition:p.disposition||undefined,location:p.location||undefined};
+    u.events.push(ev);
+    if(p.grade) u.grade=p.grade;
+    if(p.disposition) u.disposition=p.disposition;
+    if(p.location) u.location=p.location;
+    persist();
+    if(cloudMode){
+      const patch={};
+      if(p.grade) patch.grade=p.grade;
+      if(p.disposition) patch.disposition=p.disposition;
+      if(p.location!==undefined&&p.location!=="") patch.location_id=p.location||null;
+      cloudAddEvent(unitId,ev,patch).catch(syncFail);
+    }
+  }
+  function receiveUnits(sns,common){
+    const created=[];
+    sns.forEach(sn=>{
+      const u={id:uid(),sn,sku:common.sku||"",desc:common.desc||"",grade:"none",disposition:"needs-inspection",
+        location:common.location,createdAt:now(),
+        events:[{ts:now(),type:"received",by:"You",note:common.ref?`Received · ${common.ref}`:"Received",location:common.location,disposition:"needs-inspection"}]};
+      state.units.push(u); created.push(u);
+    });
+    persist(); return created;
+  }
+  function shipUnits(ids,info){
+    const note=[info.dest?`To ${info.dest}`:"",info.ref?`Ref ${info.ref}`:"",info.tracking?`Tracking ${info.tracking}`:""].filter(Boolean).join(" · ")||"Shipped";
+    ids.forEach(id=>{
+      const u=state.units.find(x=>x.id===id); if(!u) return;
+      u.events.push({ts:now(),type:"shipped",by:"You",note,disposition:"shipped"});
+      u.disposition="shipped";
+    });
+    persist();
+    if(cloudMode) cloudShipUnits(ids,note).catch(syncFail);
+  }
+
+  /* ---------------- views ---------------- */
+  const titles={dashboard:"Dashboard",inventory:"Inventory",audit:"Audit",receive:"Receive",ship:"Ship",locations:"Locations",unit:"Unit record"};
+
+  function go(view,unitId){
+    state.view=view; if(unitId!==undefined) state.unitId=unitId;
+    document.querySelectorAll("#nav .nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===(view==="unit"?"inventory":view)));
+    renderMobileNav();
+    document.getElementById("page-title").textContent=titles[view]||"";
+    document.getElementById("crumb").textContent=view==="unit"?"› inventory":"";
+    document.getElementById("nav-inv").textContent=state.units.length;
+    document.getElementById("content").innerHTML=VIEW[view]?VIEW[view]():"";
+    if(view==="audit"){const i=document.getElementById("scan-input"); if(i) i.focus();}
+    window.scrollTo(0,0);
+  }
+
+  const VIEW={};
+
+  VIEW.dashboard=function(){
+    if(state.units.length===0){
+      return `<div class="card" style="padding:26px;max-width:560px;">
+        <h2 style="font-size:18px;margin-bottom:6px;">Welcome to ServiceTag</h2>
+        <p class="muted" style="margin-bottom:18px;">Nothing tracked yet. Three steps to your first unit:</p>
+        <ol style="margin:0 0 22px;padding-left:20px;line-height:2.1;">
+          <li>Name your <strong>locations</strong> — bins, benches, shelves, racks.</li>
+          <li><strong>Receive</strong> units by serial, one at a time or in bulk.</li>
+          <li>Inspect, grade, and route them from <strong>Audit</strong>.</li>
+        </ol>
+        <div style="display:flex;gap:9px;flex-wrap:wrap;">
+          <button class="btn primary" data-view="receive">↓ Receive units</button>
+          <button class="btn" data-view="locations">Set up locations</button>
+        </div>
+      </div>`;
+    }
+    const c=d=>state.units.filter(u=>u.disposition===d).length;
+    const stats=[
+      {n:state.units.length,l:"total units",dot:"var(--graphite)"},
+      {n:c("needs-inspection"),l:"needs inspection",dot:"#C99A1E"},
+      {n:c("refurb"),l:"in refurb",dot:"var(--accent)"},
+      {n:c("stock"),l:"in stock",dot:"var(--g-a)"},
+      {n:c("scrap"),l:"scrap",dot:"var(--g-scrap)"},
+    ];
+    const flat=[];
+    state.units.forEach(u=>u.events.forEach(e=>flat.push({u,e})));
+    flat.sort((a,b)=>b.e.ts-a.e.ts);
+    const feed=flat.slice(0,12).map(({u,e})=>`
+      <div class="feed-item">
+        <div class="feed-when">${fmt(e.ts)}</div>
+        <div class="feed-body">
+          <span class="ev-type">${esc(e.type)}</span> ·
+          <span class="sn" data-unit="${u.id}">${esc(u.sn)}</span>
+          ${e.grade?` ${gradeChip(e.grade)}`:""}
+          ${e.note?`<div class="muted" style="margin-top:3px;font-size:13.5px;">${esc(e.note)}</div>`:""}
+        </div>
+      </div>`).join("");
+    const needs=state.units.filter(u=>u.disposition==="needs-inspection");
+    return `
+      <div class="stat-row">
+        ${stats.map(s=>`<div class="card stat"><div class="n">${s.n}</div><div class="l"><span class="dot" style="background:${s.dot}"></span>${s.l}</div></div>`).join("")}
+      </div>
+      ${needs.length?`<div class="card" style="padding:15px 18px;margin-bottom:24px;display:flex;align-items:center;gap:13px;">
+        <span style="font-size:20px;">⊹</span>
+        <div style="flex:1;"><strong>${needs.length} unit${needs.length>1?"s":""} waiting on inspection.</strong>
+        <span class="muted"> Grade and route them from the audit station.</span></div>
+        <button class="btn sm" data-view="audit">Open audit</button></div>`:""}
+      <div class="section-h"><h2>Recent activity</h2><span class="line"></span></div>
+      <div class="card" style="padding:6px 18px;">
+        <div class="feed">${feed||'<div class="muted" style="padding:14px 0;">No activity yet.</div>'}</div>
+      </div>`;
+  };
+
+  VIEW.inventory=function(){
+    const f=state.filter;
+    let list=state.units.slice();
+    if(f.q){const q=f.q.toLowerCase();list=list.filter(u=>(u.sn+" "+u.desc+" "+u.sku).toLowerCase().includes(q));}
+    if(f.grade)list=list.filter(u=>u.grade===f.grade);
+    if(f.disp)list=list.filter(u=>u.disposition===f.disp);
+    list.sort((a,b)=>b.createdAt-a.createdAt);
+    const gradeOpts=`<option value="">All grades</option>`+["A","B","C","D","scrap","none"].map(g=>`<option value="${g}" ${f.grade===g?"selected":""}>${g==="none"?"ungraded":"Grade "+g}</option>`).join("");
+    const dispOpts=`<option value="">All status</option>`+DISP.map(d=>`<option value="${d}" ${f.disp===d?"selected":""}>${dispLabel[d]}</option>`).join("");
+    const rows=list.map(u=>{
+      const flagged=u.grade==="D"||u.grade==="scrap"||u.disposition==="needs-inspection";
+      return `<tr class="spacer"><td></td></tr>
+      <tr class="row" tabindex="0" data-unit="${u.id}">
+        <td data-h="Serial"><div class="sn">${flagged?'<span class="flag"></span>':""}${esc(u.sn)}</div><div class="desc">${esc(u.desc)}</div></td>
+        <td data-h="Grade">${gradeChip(u.grade)}</td>
+        <td data-h="Status">${dispPill(u.disposition)}</td>
+        <td data-h="Location">${esc(locName(u.location))}</td>
+        <td data-h="Last update" class="mono" style="font-size:12.5px;color:var(--muted);">${fmt(u.events[u.events.length-1].ts)}</td>
+      </tr>`;
+    }).join("");
+    const body= list.length? `<table class="table">
+        <thead><tr><th>Serial / part</th><th>Grade</th><th>Status</th><th>Location</th><th>Last update</th></tr></thead>
+        <tbody>${rows}</tbody></table>`
+      : (state.units.length? `<div class="empty"><div class="disp">No matches</div>Try clearing the filters.</div>`
+        : `<div class="empty"><div class="disp">No units yet</div>Receive your first batch to get started.<div style="margin-top:16px;"><button class="btn primary" data-view="receive">↓ Receive units</button></div></div>`);
+    return `
+      <div class="toolbar">
+        <div class="search-wrap"><span class="si">⌕</span>
+          <input type="search" id="inv-q" placeholder="Search serial, part, or description…" value="${esc(f.q)}" autocomplete="off"></div>
+        <select id="inv-grade" style="width:auto;">${gradeOpts}</select>
+        <select id="inv-disp" style="width:auto;">${dispOpts}</select>
+      </div>
+      ${body}`;
+  };
+
+  VIEW.unit=function(){
+    const u=state.units.find(x=>x.id===state.unitId);
+    if(!u) return `<button class="back" data-view="inventory">← Inventory</button><div class="empty">Unit not found.</div>`;
+    const evs=u.events.slice().reverse();
+    const timeline=evs.map(e=>{
+      const changes=[];
+      if(e.grade)changes.push(gradeChip(e.grade));
+      if(e.disposition)changes.push(dispPill(e.disposition));
+      if(e.location)changes.push(`<span class="pill">→ ${esc(locName(e.location))}</span>`);
+      return `<div class="tl-entry t-${e.type}">
+        <div class="tl-when">${fmt(e.ts)}</div>
+        <div class="tl-head"><span class="tl-type">${esc(e.type)}</span></div>
+        ${e.note?`<div class="tl-note">${esc(e.note)}</div>`:""}
+        ${changes.length?`<div class="tl-changes">${changes.join("")}</div>`:""}
+        <div class="tl-by">by ${esc(e.by)}</div>
+      </div>`;
+    }).join("");
+    const locOpts=state.locations.map(l=>`<option value="${l.id}" ${l.id===u.location?"selected":""}>${esc(l.name)}</option>`).join("");
+    const dispOpts=DISP.filter(d=>d!=="shipped"||u.disposition==="shipped").map(d=>`<option value="${d}" ${d===u.disposition?"selected":""}>${dispLabel[d]}</option>`).join("");
+    return `
+      <button class="back" data-view="inventory">← Inventory</button>
+      <div class="tag">
+        <div class="punch"></div>
+        <div class="eyebrow">Service tag · ${esc(u.sku||"unclassified")}</div>
+        <div class="sn-big">${esc(u.sn)}</div>
+        <div class="desc">${esc(u.desc||"No description")}</div>
+        <div class="tag-meta">
+          ${gradeChip(u.grade)} ${dispPill(u.disposition)}
+          <span class="pill">◫ ${esc(locName(u.location))}</span>
+          <span class="muted" style="font-size:12.5px;margin-left:auto;">received ${fmt(u.createdAt)}</span>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div>
+          <div class="timeline-h"><h2>Condition history</h2><span class="cnt">${u.events.length} entr${u.events.length===1?"y":"ies"}</span></div>
+          <div class="tl">${timeline}</div>
+        </div>
+        <div class="card logbox">
+          <h3>Log an inspection entry</h3>
+          <div class="grade-pick" id="u-grade">
+            ${GRADES.map(g=>`<button class="gp ${g} ${u.grade===g?"sel":""}" data-grade="${g}">${g}</button>`).join("")}
+          </div>
+          <div class="muted" style="font-size:12px;margin-bottom:14px;">Tap to set the grade for this entry.</div>
+          <label class="field"><span>Note</span>
+            <textarea id="u-note" placeholder="What did you find? e.g. fan bearing noise at high RPM"></textarea></label>
+          <div class="two">
+            <label class="field"><span>Set status</span><select id="u-disp">${dispOpts}</select></label>
+            <label class="field"><span>Move to</span><select id="u-loc">${locOpts}</select></label>
+          </div>
+          <button class="btn primary" id="u-log" style="width:100%;justify-content:center;">Log entry</button>
+        </div>
+      </div>`;
+  };
+
+  VIEW.receive=function(){
+    const locOpts=state.locations.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join("");
+    const locField=state.locations.length
+      ? `<label class="field"><span>Receiving location</span><select id="rcv-loc">${locOpts}</select></label>`
+      : `<label class="field"><span>Receiving location</span><div class="muted" style="font-size:13px;padding:9px 0;">No locations yet — units go to <em>Unassigned</em>.</div></label>`;
+    return `
+      <div class="card form-card">
+        <div class="seg" id="rcv-seg"><button class="on" data-mode="manual">Pick &amp; scan</button><button data-mode="file">Batch upload</button></div>
+        <div id="rcv-manual">
+        <div id="rcv-fields">
+          <label class="field"><span>Serial number</span>
+            <input type="text" id="rcv-sns" placeholder="AIV-PSU-A0501" autocapitalize="characters" autocorrect="off" spellcheck="false" style="font-family:'IBM Plex Mono',monospace;"></label>
+          <div class="two">
+            <label class="field"><span>Part / SKU</span><input type="text" id="rcv-sku" placeholder="PSU-1600-PLT"></label>
+            ${locField}
+          </div>
+          <label class="field"><span>Description</span><input type="text" id="rcv-desc" placeholder="1600W Platinum PSU"></label>
+          <label class="field"><span>Reference <span class="muted">(optional)</span></span><input type="text" id="rcv-ref" placeholder="RMA-2290"></label>
+        </div>
+        <button class="btn primary" id="rcv-go" style="width:100%;justify-content:center;">Receive</button>
+        </div>
+        <div id="catchup-panel" style="display:none;">
+          <label class="field"><span>Spreadsheet (.xls, .xlsx, .csv)</span>
+            <input type="file" id="cu-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
+          <div id="cu-mapping"></div>
+          <div id="cu-preview"></div>
+          <button class="btn primary" id="cu-go" style="width:100%;justify-content:center;display:none;">Import</button>
+          <div class="muted" style="font-size:12.5px;margin-top:12px;">Serials already in the app are skipped. New locations are created automatically.</div>
+        </div>
+      </div>`;
+  };
+
+  VIEW.ship=function(){
+    const pickRows=state.pick.map(id=>{
+      const u=state.units.find(x=>x.id===id); if(!u) return "";
+      return `<div class="pick"><div><span class="sn">${esc(u.sn)}</span> <span class="muted" style="font-size:13px;">${esc(u.desc)}</span> ${gradeChip(u.grade)}</div>
+        <button class="btn ghost sm" data-unpick="${id}">remove</button></div>`;
+    }).join("");
+    return `
+      <div class="seg" id="ship-seg"><button class="on" data-mode="manual">Pick &amp; scan</button><button data-mode="file">Shipping file</button></div>
+      <div class="ship-grid" id="ship-manual">
+        <div>
+          <label class="field"><span>Scan or search a serial to add</span>
+            <div class="search-wrap"><span class="si">⌕</span><input type="search" id="ship-q" placeholder="Type or scan SN…" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false"></div>
+          </label>
+          <div id="ship-results" class="card" style="overflow:hidden;"></div>
+        </div>
+        <div class="card form-card" style="max-width:none;">
+          <h3 style="font-size:15px;margin-bottom:14px;">Shipment <span class="muted mono" style="font-size:13px;">(${state.pick.length})</span></h3>
+          <div id="ship-pick" style="margin-bottom:16px;">${pickRows||'<div class="pick-empty">Search and tap to add units.</div>'}</div>
+          <div class="two">
+            <label class="field"><span>Destination</span><input type="text" id="ship-dest" placeholder="DC-3 / customer"></label>
+            <label class="field"><span>Reference #</span><input type="text" id="ship-ref" placeholder="SO-4471"></label>
+          </div>
+          <label class="field"><span>Tracking #</span><input type="text" id="ship-track" placeholder="1Z…"></label>
+          <button class="btn primary" id="ship-go" ${state.pick.length?"":"disabled"} style="width:100%;justify-content:center;${state.pick.length?"":"opacity:.5;cursor:default;"}">Ship ${state.pick.length||""} unit${state.pick.length===1?"":"s"}</button>
+        </div>
+      </div>
+      <div class="card form-card" id="ship-filepanel" style="display:none;">
+        <label class="field"><span>Packing list / shipping record (.xls, .xlsx, or .csv)</span>
+          <input type="file" id="sf-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
+        <div id="sf-mapping"></div>
+        <div id="sf-preview"></div>
+        <button class="btn primary" id="sf-go" style="width:100%;justify-content:center;display:none;">Ship</button>
+        <div class="muted" style="font-size:12.5px;margin-top:12px;">Fix the column guesses if needed. Serials not in inventory are flagged and skipped.</div>
+      </div>`;
+  };
+
+  VIEW.audit=function(){
+    return `<div class="audit-wrap">
+      <div class="scan"><span class="si">⊹</span>
+        <input type="search" id="scan-input" placeholder="Scan or type a serial" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" style="width:100%;"></div>
+      <div class="scan-hint">Scan or type a serial to pull up its history.</div>
+      <div id="audit-result"></div>
+    </div>`;
+  };
+
+  function renderAuditResult(u){
+    const box=document.getElementById("audit-result");
+    if(!u){ box.innerHTML=""; return; }
+    const recent=u.events.slice().reverse().slice(0,3).map(e=>`
+      <div style="display:flex;gap:11px;padding:7px 0;border-top:1px solid var(--line);">
+        <span class="mono" style="font-size:12px;color:var(--muted);white-space:nowrap;">${fmt(e.ts)}</span>
+        <span style="font-size:13.5px;"><strong style="font-family:'Space Grotesk';">${esc(e.type)}</strong>${e.note?" · "+esc(e.note):""}</span>
+      </div>`).join("");
+    box.innerHTML=`<div class="card audit-card">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span class="mono" style="font-size:19px;font-weight:500;">${esc(u.sn)}</span>${gradeChip(u.grade)}${dispPill(u.disposition)}
+      </div>
+      <div class="muted" style="margin-top:4px;">${esc(u.desc)} · ${esc(locName(u.location))}</div>
+      <div style="margin-top:12px;">${recent}</div>
+      <div class="quick-grade">
+        <div class="muted" style="font-size:12px;margin-bottom:7px;">Set grade</div>
+        <div class="grade-pick" id="a-grade">${GRADES.map(g=>`<button class="gp ${g} ${u.grade===g?"sel":""}" data-grade="${g}">${g}</button>`).join("")}</div>
+      </div>
+      <label class="field" style="margin-top:8px;"><span>Add a dated note</span>
+        <input type="text" id="a-note" placeholder="What's wrong with this one?"></label>
+      <button class="btn primary" id="a-log" data-unit="${u.id}" style="width:100%;justify-content:center;">Stamp entry</button>
+      <button class="btn ghost sm" data-unit="${u.id}" data-open style="width:100%;justify-content:center;margin-top:8px;">Open full record →</button>
+    </div>`;
+  }
+  let auditGrade=null, uGrade=null;
+
+  VIEW.locations=function(){
+    const rows=state.locations.map(l=>{
+      const n=state.units.filter(u=>u.location===l.id).length;
+      return `<div class="loc-row"><div class="nm">◫ ${esc(l.name)} <span class="cnt">${n} unit${n===1?"":"s"}</span></div>
+        <button class="btn ghost sm" data-delloc="${l.id}">remove</button></div>`;
+    }).join("");
+    return `<div style="max-width:560px;">
+      ${rows}
+      <div style="display:flex;gap:9px;margin-top:14px;">
+        <input type="text" id="loc-new" placeholder="New location name (e.g. Burn-in rack)" style="flex:1;">
+        <button class="btn primary" id="loc-add">Add</button>
+      </div>
+      <div class="muted" style="font-size:12.5px;margin-top:12px;">Name them the way your floor does — bins, shelves, benches.</div>
+
+      <div class="card" style="padding:18px;margin-top:26px;">
+        <h3 style="font-size:14.5px;margin-bottom:6px;">Data &amp; backup</h3>
+        <p class="muted" style="font-size:13px;margin:0;">${cloudMode?"Synced to your account. Download a file copy anytime.":"Data lives only in this browser. Download a backup to keep or move it."}</p>
+        <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;">
+          <button class="btn" data-act="export">⤓ Download backup</button>
+          <button class="btn ghost" data-act="import">Restore from file…</button>
+        </div>
+        <input type="file" id="import-file" accept="application/json,.json" style="display:none;">
+      </div>
+    </div>`;
+  };
+
+  function renderMobileNav(){
+    const items=[["dashboard","Dashboard"],["inventory","Inventory"],["audit","Audit"],["receive","Receive"],["ship","Ship"],["locations","Locations"]];
+    document.getElementById("mnav").innerHTML=items.map(([v,l])=>`<button data-view="${v}" class="${state.view===v||(state.view==="unit"&&v==="inventory")?"active":""}">${l}</button>`).join("")+`<button data-act="signout" style="margin-left:auto;color:#A7A49B;">Sign out</button>`;
+  }
+
+  /* ---------------- event wiring ---------------- */
+  document.addEventListener("click",e=>{
+    if(e.target.closest("#li-google")){ signIn("Google"); return; }
+    if(e.target.closest("#li-apple")){ signIn("Apple"); return; }
+    if(e.target.closest("#li-guest")){ signIn("Local"); return; }
+    if(e.target.closest("[data-act='signout']")){ signOut(); return; }
+    const nav=e.target.closest("[data-view]");
+    if(nav){ go(nav.dataset.view); return; }
+    const unit=e.target.closest("[data-unit]");
+    if(unit && (unit.classList.contains("row")||unit.classList.contains("sn"))){ go("unit",unit.dataset.unit); return; }
+
+    const g=e.target.closest("[data-grade]");
+    if(g){
+      const parent=g.parentElement;
+      parent.querySelectorAll(".gp").forEach(x=>x.classList.remove("sel"));
+      g.classList.add("sel");
+      if(parent.id==="a-grade") auditGrade=g.dataset.grade;
+      if(parent.id==="u-grade") uGrade=g.dataset.grade;
+      return;
+    }
+    if(e.target.id==="u-log"){
+      const note=document.getElementById("u-note").value.trim();
+      const disp=document.getElementById("u-disp").value;
+      const loc=document.getElementById("u-loc").value;
+      const u=state.units.find(x=>x.id===state.unitId);
+      const payload={note};
+      if(uGrade&&uGrade!==u.grade)payload.grade=uGrade;
+      if(disp!==u.disposition)payload.disposition=disp;
+      if(loc!==u.location)payload.location=loc;
+      if(!payload.note&&!payload.grade&&!payload.disposition&&!payload.location){toast("Nothing to log yet");return;}
+      addEvent(state.unitId,payload); uGrade=null; toast("Entry logged"); go("unit");
+      return;
+    }
+    if(e.target.id==="a-log"){
+      const id=e.target.dataset.unit;
+      const note=document.getElementById("a-note").value.trim();
+      const u=state.units.find(x=>x.id===id);
+      const payload={note};
+      if(auditGrade&&auditGrade!==u.grade)payload.grade=auditGrade;
+      if(!payload.note&&!payload.grade){toast("Add a note or grade first");return;}
+      addEvent(id,payload); auditGrade=null; toast("Stamped · "+u.sn);
+      renderAuditResult(state.units.find(x=>x.id===id));
+      const si=document.getElementById("scan-input");
+      if(si){ si.focus(); si.select(); }
+      return;
+    }
+    if(e.target.matches("[data-open]")){ go("unit",e.target.dataset.unit); return; }
+
+    if(e.target.id==="rcv-go"){ doReceive(); return; }
+    if(e.target.id==="sf-go"){ doShipFile(); return; }
+    if(e.target.id==="cu-go"){ doCatchupImport(); return; }
+    const sseg=e.target.closest("#ship-seg button");
+    if(sseg){
+      document.querySelectorAll("#ship-seg button").forEach(b=>b.classList.remove("on"));
+      sseg.classList.add("on");
+      const man=document.getElementById("ship-manual"), fp=document.getElementById("ship-filepanel");
+      if(sseg.dataset.mode==="file"){ man.style.display="none"; fp.style.display="block"; }
+      else { man.style.display="grid"; fp.style.display="none"; }
+      return;
+    }
+    if(e.target.id==="ship-go"){ doShip(); return; }
+    const unpick=e.target.closest("[data-unpick]");
+    if(unpick){ state.pick=state.pick.filter(x=>x!==unpick.dataset.unpick); go("ship"); return; }
+    const addr=e.target.closest("[data-addpick]");
+    if(addr){ if(!state.pick.includes(addr.dataset.addpick))state.pick.push(addr.dataset.addpick); document.getElementById("ship-q").value=""; go("ship"); return; }
+
+    if(e.target.id==="loc-add"){ addLoc(); return; }
+    if(e.target.closest("[data-act='export']")){ exportData(); return; }
+    if(e.target.closest("[data-act='import']")){ const f=document.getElementById("import-file"); if(f) f.click(); return; }
+    const dl=e.target.closest("[data-delloc]");
+    if(dl){
+      const n=state.units.filter(u=>u.location===dl.dataset.delloc).length;
+      if(n>0){toast("Move its "+n+" unit(s) first");return;}
+      state.locations=state.locations.filter(l=>l.id!==dl.dataset.delloc); persist();
+      if(cloudMode) cloudDeleteLocation(dl.dataset.delloc).catch(syncFail);
+      go("locations"); return;
+    }
+
+    const seg=e.target.closest("#rcv-seg button");
+    if(seg){
+      document.querySelectorAll("#rcv-seg button").forEach(b=>b.classList.remove("on"));
+      seg.classList.add("on");
+      const manual=document.getElementById("rcv-manual"), cu=document.getElementById("catchup-panel");
+      if(seg.dataset.mode==="file"){ manual.style.display="none"; cu.style.display="block"; }
+      else { manual.style.display="block"; cu.style.display="none"; }
+      return;
+    }
+  });
+
+  document.addEventListener("input",e=>{
+    if(e.target.id==="inv-q"){ state.filter.q=e.target.value; rerenderInv(); }
+    if(e.target.id==="ship-q"){ renderShipResults(e.target.value); }
+  });
+  document.addEventListener("change",e=>{
+    if(e.target.id==="inv-grade"){ state.filter.grade=e.target.value; go("inventory"); }
+    if(e.target.id==="inv-disp"){ state.filter.disp=e.target.value; go("inventory"); }
+    if(e.target.id==="import-file"){ const f=e.target.files&&e.target.files[0]; if(f) importData(f); e.target.value=""; }
+    if(e.target.id==="sf-file"){ const f=e.target.files&&e.target.files[0]; if(f) parseShipFile(f); e.target.value=""; }
+    if(e.target.id==="cu-file"){ const f=e.target.files&&e.target.files[0]; if(f) parseCatchupFile(f); e.target.value=""; }
+    if(/^sf-map-/.test(e.target.id||"")){ replanShipFile(); }
+    if(/^cu-map-/.test(e.target.id||"")){ replanCatchup(); }
+  });
+  document.addEventListener("keydown",e=>{
+    if(e.target.id==="scan-input"&&e.key==="Enter"){
+      const v=e.target.value.trim().toLowerCase();
+      const u=state.units.find(x=>x.sn.toLowerCase()===v)||state.units.find(x=>x.sn.toLowerCase().includes(v)&&v);
+      if(u){auditGrade=null;renderAuditResult(u);} else {document.getElementById("audit-result").innerHTML=`<div class="card audit-card muted">No unit matches “${esc(e.target.value)}”. Check the serial or receive it first.</div>`;}
+    }
+    if(e.target.id==="loc-new"&&e.key==="Enter")addLoc();
+    if(e.target.id==="rcv-sns"&&e.target.tagName==="INPUT"&&e.key==="Enter")doReceive();
+    if(e.target.id==="ship-q"&&e.key==="Enter"){
+      const res=shipMatches(e.target.value);
+      if(res.length===1){ if(!state.pick.includes(res[0].id))state.pick.push(res[0].id); go("ship"); }
+    }
+  });
+
+  function rerenderInv(){
+    // re-render only table area to preserve search focus
+    const f=state.filter; let list=state.units.slice();
+    if(f.q){const q=f.q.toLowerCase();list=list.filter(u=>(u.sn+" "+u.desc+" "+u.sku).toLowerCase().includes(q));}
+    if(f.grade)list=list.filter(u=>u.grade===f.grade);
+    if(f.disp)list=list.filter(u=>u.disposition===f.disp);
+    list.sort((a,b)=>b.createdAt-a.createdAt);
+    const wrap=document.getElementById("content");
+    const old=wrap.querySelector(".table")||wrap.querySelector(".empty");
+    const rows=list.map(u=>{
+      const flagged=u.grade==="D"||u.grade==="scrap"||u.disposition==="needs-inspection";
+      return `<tr class="spacer"><td></td></tr><tr class="row" tabindex="0" data-unit="${u.id}">
+        <td data-h="Serial"><div class="sn">${flagged?'<span class="flag"></span>':""}${esc(u.sn)}</div><div class="desc">${esc(u.desc)}</div></td>
+        <td data-h="Grade">${gradeChip(u.grade)}</td><td data-h="Status">${dispPill(u.disposition)}</td>
+        <td data-h="Location">${esc(locName(u.location))}</td>
+        <td data-h="Last update" class="mono" style="font-size:12.5px;color:var(--muted);">${fmt(u.events[u.events.length-1].ts)}</td></tr>`;
+    }).join("");
+    const html= list.length?`<table class="table"><thead><tr><th>Serial / part</th><th>Grade</th><th>Status</th><th>Location</th><th>Last update</th></tr></thead><tbody>${rows}</tbody></table>`
+      :`<div class="empty"><div class="disp">No matches</div>Try clearing the filters.</div>`;
+    if(old){ const tmp=document.createElement("div"); tmp.innerHTML=html; old.replaceWith(tmp.firstElementChild); }
+  }
+
+  async function doReceive(){
+    const raw=document.getElementById("rcv-sns").value;
+    const sns=raw.split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
+    if(!sns.length){toast("Enter at least one serial");return;}
+    const existing=new Set(state.units.map(u=>u.sn.toLowerCase()));
+    const fresh=[...new Set(sns)].filter(s=>!existing.has(s.toLowerCase()));
+    const dup=sns.length-fresh.length;
+    if(!fresh.length){toast("Those serials already exist");return;}
+    const common={
+      sku:document.getElementById("rcv-sku").value.trim(),
+      desc:document.getElementById("rcv-desc").value.trim(),
+      location:(document.getElementById("rcv-loc")?document.getElementById("rcv-loc").value:""),
+      ref:document.getElementById("rcv-ref").value.trim(),
+    };
+    if(cloudMode){
+      const btn=document.getElementById("rcv-go"); if(btn){btn.disabled=true;btn.textContent="Receiving…";}
+      try{
+        const created=await cloudReceiveUnits(fresh,common);
+        state.units.push(...created);
+      }catch(err){ syncFail(err); if(btn){btn.disabled=false;btn.textContent="Receive units";} return; }
+    }else{
+      receiveUnits(fresh,common);
+    }
+    toast(`Received ${fresh.length} unit${fresh.length>1?"s":""}${dup?` · skipped ${dup} duplicate`:""}`);
+    go("inventory");
+  }
+
+  function shipMatches(q){
+    q=(q||"").trim().toLowerCase(); if(!q) return [];
+    return state.units.filter(u=>u.disposition!=="shipped"&&!state.pick.includes(u.id)&&(u.sn.toLowerCase().includes(q)||u.desc.toLowerCase().includes(q))).slice(0,6);
+  }
+  function renderShipResults(q){
+    const box=document.getElementById("ship-results"); if(!box)return;
+    const res=shipMatches(q);
+    if(!q.trim()){box.innerHTML=`<div style="padding:14px;color:var(--muted);font-size:13.5px;">Type to search available units.</div>`;return;}
+    box.innerHTML=res.length?res.map(u=>`<div class="addrow" data-addpick="${u.id}">
+      <span class="sn">${esc(u.sn)}</span><span class="muted" style="font-size:13px;">${esc(u.desc)}</span>${gradeChip(u.grade)}
+      <span style="margin-left:auto;color:var(--accent);font-size:18px;">+</span></div>`).join("")
+      :`<div style="padding:14px;color:var(--muted);font-size:13.5px;">No available units match “${esc(q)}”.</div>`;
+  }
+  function doShip(){
+    if(!state.pick.length){toast("Add units to the shipment first");return;}
+    const n=state.pick.length;
+    if(!window.confirm(`Ship ${n} unit${n>1?"s":""}? This marks them shipped and can't be undone in the app.`)) return;
+    shipUnits(state.pick,{
+      dest:document.getElementById("ship-dest").value.trim(),
+      ref:document.getElementById("ship-ref").value.trim(),
+      tracking:document.getElementById("ship-track").value.trim(),
+    });
+    state.pick=[]; toast(`Shipped ${n} unit${n>1?"s":""}`); go("inventory");
+  }
+
+  async function addLoc(){
+    const i=document.getElementById("loc-new"); const v=i.value.trim();
+    if(!v)return;
+    if(cloudMode){
+      try{ const l=await cloudAddLocation(v); state.locations.push(l); }
+      catch(err){ syncFail(err); return; }
+    }else{
+      state.locations.push({id:uid(),name:v}); persist();
+    }
+    go("locations");
+  }
+
+  /* ---------------- RMA file import ---------------- */
+  let pendingRma=null;
+
+  // Tolerant header lookup: exact match first, then case-insensitive.
+  function rmaCol(row,name){
+    if(row[name]!==undefined) return String(row[name]??"").trim();
+    const k=Object.keys(row).find(x=>x.trim().toLowerCase()===name.toLowerCase());
+    return k?String(row[k]??"").trim():"";
+  }
+  function splitSns(v){
+    return String(v||"").split(/[\s,;\/|]+/).map(s=>s.trim()).filter(s=>s.length>=3);
+  }
+
+  // Pure planner: rows in → what would happen, without touching state.
+  function buildRmaPlan(rows){
+    const plan={items:[],existing:0,fresh:0,noSn:0,dups:0};
+    const seen=new Set();
+    rows.forEach(row=>{
+      const sns=splitSns(rmaCol(row,"Defective SN"));
+      if(!sns.length){ plan.noSn++; return; }
+      const rma=rmaCol(row,"RMA No.");
+      const pn=rmaCol(row,"Defective PN");
+      const cat=rmaCol(row,"Defective Category");
+      const model=rmaCol(row,"System Model");
+      const fail=rmaCol(row,"Failure Description");
+      const tk=rmaCol(row,"Defective Tk#");
+      const cref=rmaCol(row,"Customer Ref#");
+      const noteBits=[rma?`RMA ${rma}`:"RMA return", fail, tk?`Tk# ${tk}`:"", cref?`Cust ${cref}`:""].filter(Boolean);
+      sns.forEach(sn=>{
+        const key=sn.toLowerCase();
+        if(seen.has(key)){ plan.dups++; return; }
+        seen.add(key);
+        const unit=state.units.find(u=>u.sn.toLowerCase()===key);
+        plan.items.push({ sn, exists:!!unit, unitId:unit?unit.id:null,
+          sku:pn, desc:[cat,model].filter(Boolean).join(" · "),
+          note:noteBits.join(" · ") });
+        unit?plan.existing++:plan.fresh++;
+      });
+    });
+    return plan;
+  }
+
+
+  // Shared reader: any .csv/.xls/.xlsx → array of row objects keyed by header.
+  async function readTabularFile(file){
+    const ext=(file.name.split(".").pop()||"").toLowerCase();
+    if(ext==="csv"){
+      const text=await file.text();
+      return parseCsv(text);
+    }
+    if(!window.XLSX) throw new Error("The spreadsheet reader didn't load — check your connection once and retry, or export the report as CSV.");
+    const buf=await file.arrayBuffer();
+    const wb=window.XLSX.read(buf,{type:"array"});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    return window.XLSX.utils.sheet_to_json(ws,{defval:""});
+  }
+
+
+  // Minimal RFC-4180-ish CSV → array of objects using the first row as headers.
+  function parseCsv(text){
+    const rows=[]; let row=[], cell="", inQ=false;
+    for(let i=0;i<text.length;i++){
+      const c=text[i];
+      if(inQ){
+        if(c==='"'){ if(text[i+1]==='"'){cell+='"';i++;} else inQ=false; }
+        else cell+=c;
+      }else if(c==='"') inQ=true;
+      else if(c===","){ row.push(cell); cell=""; }
+      else if(c==="\n"||c==="\r"){ if(c==="\r"&&text[i+1]==="\n")i++; row.push(cell); cell=""; if(row.some(x=>x.trim()!=="")) rows.push(row); row=[]; }
+      else cell+=c;
+    }
+    if(cell!==""||row.length){ row.push(cell); if(row.some(x=>x.trim()!=="")) rows.push(row); }
+    if(rows.length<2) return [];
+    const headers=rows[0].map(h=>h.trim());
+    return rows.slice(1).map(r=>{ const o={}; headers.forEach((h,i)=>o[h]=r[i]!==undefined?r[i]:""); return o; });
+  }
+
+  async function processRmaPlan(plan,locId){
+    let logged=0, received=0, failed=0;
+    for(const it of plan.items){
+      try{
+        if(it.exists){
+          addEvent(it.unitId,{type:"received",note:it.note,disposition:"needs-inspection",location:locId||""});
+          logged++;
+        }else{
+          const common={sku:it.sku,desc:it.desc,location:locId||"",ref:it.note};
+          if(cloudMode){
+            const created=await cloudReceiveUnits([it.sn],common);
+            state.units.push(...created);
+          }else{
+            receiveUnits([it.sn],common);
+          }
+          received++;
+        }
+      }catch(err){ console.error(err); failed++; }
+    }
+    return {logged,received,failed};
+  }
+
+
+  /* ---------------- shipping file import ---------------- */
+  let pendingShipFile=null;
+
+  function guessCol(headers,patterns){
+    for(const p of patterns){ const h=headers.find(x=>p.test(x)); if(h) return h; }
+    return "";
+  }
+  function detectShipColumns(headers){
+    return {
+      sn:  guessCol(headers,[/^s\/?n\.?$/i,/serial/i,/\bsn\b/i]),
+      tk:  guessCol(headers,[/track/i,/\btk\.?\s*#?/i,/awb/i,/pro\s*#/i]),
+      ref: guessCol(headers,[/packing/i,/\bref/i,/\bso\b|so#/i,/\bdn\b|dn\s*\/|delivery/i,/order/i,/invoice/i,/\bpl\s*#?/i]),
+      dest:guessCol(headers,[/ship\s*to/i,/dest/i,/consignee/i,/customer/i,/receiver/i,/company/i]),
+    };
+  }
+  function readShipMap(){
+    const g=id=>{const el=document.getElementById(id);return el?el.value:"";};
+    return {sn:g("sf-map-sn"),tk:g("sf-map-tk"),ref:g("sf-map-ref"),dest:g("sf-map-dest")};
+  }
+  function renderShipMapping(headers,map){
+    const box=document.getElementById("sf-mapping"); if(!box)return;
+    const opts=(sel,allowNone)=>((allowNone?`<option value="">— none —</option>`:"")+
+      headers.map(h=>`<option value="${esc(h)}" ${h===sel?"selected":""}>${esc(h)}</option>`).join(""));
+    box.innerHTML=`
+      <div class="two">
+        <label class="field"><span>Serial number column <span style="color:var(--g-d);">*</span></span>
+          <select id="sf-map-sn">${map.sn?"":`<option value="" selected>— choose —</option>`}${opts(map.sn,false)}</select></label>
+        <label class="field"><span>Tracking # column</span><select id="sf-map-tk">${opts(map.tk,true)}</select></label>
+      </div>
+      <div class="two">
+        <label class="field"><span>Reference # column</span><select id="sf-map-ref">${opts(map.ref,true)}</select></label>
+        <label class="field"><span>Ship-to column</span><select id="sf-map-dest">${opts(map.dest,true)}</select></label>
+      </div>`;
+  }
+
+  // Pure planner: classify every serial in the file against inventory.
+  function buildShipPlan(rows,map){
+    const plan={items:[],notFound:[],alreadyShipped:0,dups:0,noSn:0};
+    if(!map.sn) return plan;
+    const seen=new Set();
+    rows.forEach(row=>{
+      const sns=splitSns(rmaCol(row,map.sn));
+      if(!sns.length){ plan.noSn++; return; }
+      const tk=map.tk?rmaCol(row,map.tk):"";
+      const ref=map.ref?rmaCol(row,map.ref):"";
+      const dest=map.dest?rmaCol(row,map.dest):"";
+      const note=[dest?`To ${dest}`:"",ref?`Ref ${ref}`:"",tk?`Tracking ${tk}`:""].filter(Boolean).join(" · ")||"Shipped";
+      sns.forEach(sn=>{
+        const key=sn.toLowerCase();
+        if(seen.has(key)){ plan.dups++; return; }
+        seen.add(key);
+        const unit=state.units.find(u=>u.sn.toLowerCase()===key);
+        if(!unit){ plan.notFound.push(sn); return; }
+        if(unit.disposition==="shipped"){ plan.alreadyShipped++; return; }
+        plan.items.push({sn,unitId:unit.id,note});
+      });
+    });
+    return plan;
+  }
+
+  function renderShipPreview(plan,fileName){
+    const box=document.getElementById("sf-preview"); if(!box)return;
+    const btn=document.getElementById("sf-go");
+    if(!plan.items.length&&!plan.notFound.length){
+      box.innerHTML=`<div class="pick-empty" style="margin-bottom:12px;">No serials found in “${esc(fileName)}” with that column mapping. Pick the right serial column above.</div>`;
+      btn.style.display="none"; return;
+    }
+    const sample=plan.items.slice(0,8).map(it=>`
+      <div class="pick"><div style="min-width:0;"><span class="sn">${esc(it.sn)}</span>
+        <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(it.note)}</span></div>
+        <span class="pill disp-scrap" style="flex:none;">will ship</span></div>`).join("");
+    const nf=plan.notFound.length?`<div class="pick" style="border-color:var(--g-d);"><div style="min-width:0;">
+        <strong style="font-size:13px;color:var(--g-d);">${plan.notFound.length} serial${plan.notFound.length>1?"s":""} not in inventory — skipped:</strong>
+        <span class="muted" style="font-size:12.5px;display:block;">${esc(plan.notFound.slice(0,6).join(", "))}${plan.notFound.length>6?" …":""}</span></div></div>`:"";
+    box.innerHTML=`
+      <div class="muted" style="font-size:13px;margin:4px 0 10px;">
+        <strong>${plan.items.length}</strong> unit${plan.items.length===1?"":"s"} will be marked shipped.
+        ${plan.alreadyShipped?` ${plan.alreadyShipped} already shipped — skipped.`:""}
+        ${plan.dups?` ${plan.dups} duplicate${plan.dups>1?"s":""} in file skipped.`:""}
+        ${plan.noSn?` ${plan.noSn} row${plan.noSn>1?"s":""} without a serial ignored.`:""}
+      </div>${sample}${plan.items.length>8?`<div class="muted" style="font-size:12px;margin:6px 0;">…and ${plan.items.length-8} more</div>`:""}${nf}`;
+    if(plan.items.length){ btn.style.display="flex"; btn.textContent=`Ship ${plan.items.length} unit${plan.items.length===1?"":"s"}`; }
+    else btn.style.display="none";
+  }
+
+  async function parseShipFile(file){
+    const box=document.getElementById("sf-preview");
+    box.innerHTML=`<div class="muted" style="font-size:13px;padding:6px 0;">Reading “${esc(file.name)}”…</div>`;
+    try{
+      const rows=await readTabularFile(file);
+      const headers=rows.length?Object.keys(rows[0]):[];
+      if(!headers.length) throw new Error("No data rows found.");
+      const map=detectShipColumns(headers);
+      pendingShipFile={rows,headers,fileName:file.name};
+      renderShipMapping(headers,map);
+      renderShipPreview(buildShipPlan(rows,map),file.name);
+    }catch(err){
+      console.error(err);
+      pendingShipFile=null;
+      document.getElementById("sf-mapping").innerHTML="";
+      box.innerHTML=`<div class="pick-empty" style="margin-bottom:12px;">Couldn't read that file. ${esc(err.message||"")}</div>`;
+      document.getElementById("sf-go").style.display="none";
+    }
+  }
+
+  function replanShipFile(){
+    if(!pendingShipFile)return;
+    renderShipPreview(buildShipPlan(pendingShipFile.rows,readShipMap()),pendingShipFile.fileName);
+  }
+
+  async function doShipFile(){
+    if(!pendingShipFile){ toast("Load a shipping file first"); return; }
+    const plan=buildShipPlan(pendingShipFile.rows,readShipMap());
+    if(!plan.items.length){ toast("Nothing to ship with this mapping"); return; }
+    if(!window.confirm(`Mark ${plan.items.length} unit${plan.items.length>1?"s":""} as shipped? This can't be undone in the app.`)) return;
+    const btn=document.getElementById("sf-go");
+    btn.disabled=true; btn.textContent="Shipping…";
+    let done=0;
+    plan.items.forEach(it=>{ addEvent(it.unitId,{type:"shipped",note:it.note,disposition:"shipped"}); done++; });
+    pendingShipFile=null;
+    btn.disabled=false;
+    toast(`Shipped ${done} unit${done===1?"":"s"} from file${plan.notFound.length?` · ${plan.notFound.length} not found`:""}`);
+    state.filter={q:"",grade:"",disp:"shipped"};
+    go("inventory");
+  }
+
+  /* ---------------- catch-up import (bootstrap existing inventory) ---------------- */
+  let pendingCatchup=null;
+
+  function detectCatchupColumns(headers){
+    return {
+      sn:   guessCol(headers,[/^s\/?n\.?$/i,/serial/i,/\bsn\b/i]),
+      sku:  guessCol(headers,[/part\s*(no|number|#)?/i,/\bpn\b/i,/sku/i,/model/i]),
+      desc: guessCol(headers,[/desc/i,/item\s*name/i,/product/i]),
+      grade:guessCol(headers,[/grade/i,/condition/i]),
+      disp: guessCol(headers,[/status/i,/disposition/i,/state/i]),
+      loc:  guessCol(headers,[/location/i,/\bbin\b/i,/shelf/i,/warehouse/i,/site/i]),
+      note: guessCol(headers,[/note/i,/comment/i,/remark/i]),
+    };
+  }
+  function readCatchupMap(){
+    const g=id=>{const el=document.getElementById(id);return el?el.value:"";};
+    return {sn:g("cu-map-sn"),sku:g("cu-map-sku"),desc:g("cu-map-desc"),grade:g("cu-map-grade"),
+      disp:g("cu-map-disp"),loc:g("cu-map-loc"),note:g("cu-map-note")};
+  }
+  function renderCatchupMapping(headers,map){
+    const box=document.getElementById("cu-mapping"); if(!box)return;
+    const opts=(sel,allowNone)=>((allowNone?`<option value="">— none —</option>`:"")+
+      headers.map(h=>`<option value="${esc(h)}" ${h===sel?"selected":""}>${esc(h)}</option>`).join(""));
+    box.innerHTML=`
+      <div class="two">
+        <label class="field"><span>Serial number column <span style="color:var(--g-d);">*</span></span>
+          <select id="cu-map-sn">${map.sn?"":`<option value="" selected>— choose —</option>`}${opts(map.sn,false)}</select></label>
+        <label class="field"><span>Part / SKU column</span><select id="cu-map-sku">${opts(map.sku,true)}</select></label>
+      </div>
+      <div class="two">
+        <label class="field"><span>Description column</span><select id="cu-map-desc">${opts(map.desc,true)}</select></label>
+        <label class="field"><span>Location column</span><select id="cu-map-loc">${opts(map.loc,true)}</select></label>
+      </div>
+      <div class="two">
+        <label class="field"><span>Grade column <span class="muted">(A/B/C/D/scrap)</span></span><select id="cu-map-grade">${opts(map.grade,true)}</select></label>
+        <label class="field"><span>Status column</span><select id="cu-map-disp">${opts(map.disp,true)}</select></label>
+      </div>
+      <label class="field"><span>Notes column</span><select id="cu-map-note">${opts(map.note,true)}</select></label>`;
+  }
+  // Lenient text -> our fixed vocab. Unrecognized text is preserved in the note, not lost.
+  function normGrade(v){
+    v=String(v||"").trim().toUpperCase();
+    if(["A","B","C","D"].includes(v)) return v;
+    if(/^SCRAP|DEAD|FAIL/.test(v)) return "scrap";
+    if(/LIKE\s*NEW|SEALED|GRADE\s*A/.test(v)) return "A";
+    return "";
+  }
+  function normDisp(v){
+    v=String(v||"").trim().toLowerCase();
+    if(!v) return "";
+    if(/refurb/.test(v)) return "refurb";
+    if(/scrap|dead|dispos/.test(v)) return "scrap";
+    if(/inspect|review|pending|hold|quarantine/.test(v)) return "needs-inspection";
+    if(/stock|ready|available|good|in\s*inv/.test(v)) return "stock";
+    if(/\bshipped\b/.test(v)) return "shipped";
+    return "";
+  }
+
+  function buildCatchupPlan(rows,map){
+    const plan={items:[],skipped:0,noSn:0,dups:0,newLocs:new Set()};
+    if(!map.sn) return plan;
+    const seen=new Set();
+    const existing=new Set(state.units.map(u=>u.sn.toLowerCase()));
+    rows.forEach(row=>{
+      const sns=splitSns(rmaCol(row,map.sn));
+      if(!sns.length){ plan.noSn++; return; }
+      const sku=map.sku?rmaCol(row,map.sku):"";
+      const desc=map.desc?rmaCol(row,map.desc):"";
+      const rawGrade=map.grade?rmaCol(row,map.grade):"";
+      const rawDisp=map.disp?rmaCol(row,map.disp):"";
+      const rawNote=map.note?rmaCol(row,map.note):"";
+      const locName=map.loc?rmaCol(row,map.loc):"";
+      const grade=normGrade(rawGrade);
+      const disposition=normDisp(rawDisp)||"stock";
+      const extra=[!grade&&rawGrade?`Grade (sheet): ${rawGrade}`:"",!normDisp(rawDisp)&&rawDisp?`Status (sheet): ${rawDisp}`:"",rawNote].filter(Boolean).join(" · ");
+      sns.forEach(sn=>{
+        const key=sn.toLowerCase();
+        if(seen.has(key)){ plan.dups++; return; }
+        seen.add(key);
+        if(existing.has(key)){ plan.skipped++; return; }
+        if(locName) plan.newLocs.add(locName);
+        plan.items.push({sn,sku,desc,grade,disposition,locName,note:extra||"Initial inventory import"});
+      });
+    });
+    return plan;
+  }
+
+  function renderCatchupPreview(plan,fileName){
+    const box=document.getElementById("cu-preview"); if(!box)return;
+    const btn=document.getElementById("cu-go");
+    if(!plan.items.length){
+      box.innerHTML=`<div class="pick-empty" style="margin-bottom:12px;">Nothing new to import from “${esc(fileName)}” with that mapping — check the serial column, or every serial may already be in inventory.</div>`;
+      btn.style.display="none"; return;
+    }
+    const sample=plan.items.slice(0,8).map(it=>`
+      <div class="pick"><div style="min-width:0;"><span class="sn">${esc(it.sn)}</span>
+        <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(it.desc||it.sku||"")}${it.locName?" · "+esc(it.locName):""}</span></div>
+        ${gradeChip(it.grade||"none")}<span class="pill disp-${it.disposition}" style="flex:none;">${esc(dispLabel[it.disposition])}</span></div>`).join("");
+    const locNote=plan.newLocs.size?`<div class="muted" style="font-size:12.5px;margin:8px 0;">Will create ${plan.newLocs.size} new location${plan.newLocs.size>1?"s":""}: ${esc([...plan.newLocs].join(", "))}</div>`:"";
+    box.innerHTML=`
+      <div class="muted" style="font-size:13px;margin:4px 0 10px;">
+        <strong>${plan.items.length}</strong> new unit${plan.items.length===1?"":"s"} will be added.
+        ${plan.skipped?` ${plan.skipped} already in inventory — left untouched.`:""}
+        ${plan.dups?` ${plan.dups} duplicate${plan.dups>1?"s":""} in file skipped.`:""}
+        ${plan.noSn?` ${plan.noSn} row${plan.noSn>1?"s":""} without a serial ignored.`:""}
+      </div>${locNote}${sample}${plan.items.length>8?`<div class="muted" style="font-size:12px;margin-top:6px;">…and ${plan.items.length-8} more</div>`:""}`;
+    btn.style.display="flex"; btn.textContent=`Import ${plan.items.length} unit${plan.items.length===1?"":"s"}`;
+  }
+
+  async function parseCatchupFile(file){
+    const box=document.getElementById("cu-preview");
+    box.innerHTML=`<div class="muted" style="font-size:13px;padding:6px 0;">Reading “${esc(file.name)}”…</div>`;
+    try{
+      const rows=await readTabularFile(file);
+      const headers=rows.length?Object.keys(rows[0]):[];
+      if(!headers.length) throw new Error("No data rows found.");
+      const map=detectCatchupColumns(headers);
+      pendingCatchup={rows,headers,fileName:file.name};
+      renderCatchupMapping(headers,map);
+      renderCatchupPreview(buildCatchupPlan(rows,map),file.name);
+    }catch(err){
+      console.error(err);
+      pendingCatchup=null;
+      document.getElementById("cu-mapping").innerHTML="";
+      box.innerHTML=`<div class="pick-empty" style="margin-bottom:12px;">Couldn't read that file. ${esc(err.message||"")}</div>`;
+      document.getElementById("cu-go").style.display="none";
+    }
+  }
+  function replanCatchup(){
+    if(!pendingCatchup)return;
+    renderCatchupPreview(buildCatchupPlan(pendingCatchup.rows,readCatchupMap()),pendingCatchup.fileName);
+  }
+
+  async function ensureLocation(name){
+    let l=state.locations.find(x=>x.name.toLowerCase()===name.toLowerCase());
+    if(l) return l.id;
+    if(cloudMode){
+      const created=await cloudAddLocation(name);
+      state.locations.push(created);
+      return created.id;
+    }
+    const created={id:uid(),name};
+    state.locations.push(created); persist();
+    return created.id;
+  }
+
+  async function doCatchupImport(){
+    if(!pendingCatchup){ toast("Load an inventory file first"); return; }
+    const plan=buildCatchupPlan(pendingCatchup.rows,readCatchupMap());
+    if(!plan.items.length){ toast("Nothing new to import"); return; }
+    const btn=document.getElementById("cu-go");
+    btn.disabled=true; btn.textContent="Importing…";
+    const locCache={};
+    let added=0, failed=0;
+    for(const it of plan.items){
+      try{
+        let locId="";
+        if(it.locName){
+          if(!(it.locName in locCache)) locCache[it.locName]=await ensureLocation(it.locName);
+          locId=locCache[it.locName];
+        }
+        const common={sku:it.sku,desc:it.desc,location:locId,ref:""};
+        let unit;
+        if(cloudMode){
+          const created=await cloudReceiveUnits([it.sn],common);
+          unit=created[0]; state.units.push(unit);
+        }else{
+          unit=receiveUnits([it.sn],common)[0];
+        }
+        // Overwrite the generic "Received" note/grade/status with the sheet's own state.
+        if(it.grade||it.disposition!=="needs-inspection"||it.note!=="Initial inventory import"){
+          addEvent(unit.id,{note:it.note,grade:it.grade||undefined,disposition:it.disposition});
+        }
+        added++;
+      }catch(err){ console.error(err); failed++; }
+    }
+    pendingCatchup=null;
+    btn.disabled=false;
+    toast(`Imported ${added} unit${added===1?"":"s"}${failed?`, ${failed} failed`:""}`);
+    document.getElementById("cu-mapping").innerHTML="";
+    document.getElementById("cu-preview").innerHTML="";
+    btn.style.display="none";
+    state.filter={q:"",grade:"",disp:""};
+    go("inventory");
+  }
+
+  /* test hook for headless verification (harmless in production) */
+  window.STDebug={buildRmaPlan,processRmaPlan,parseCsv,buildShipPlan,detectShipColumns,
+    buildCatchupPlan,detectCatchupColumns,normGrade,normDisp};
+
+  function exportData(){
+    const payload={app:"servicetag",version:1,exportedAt:new Date().toISOString(),locations:state.locations,units:state.units};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download="servicetag-backup-"+new Date().toISOString().slice(0,10)+".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+    toast("Backup downloaded · "+state.units.length+" units");
+  }
+  function importData(file){
+    const reader=new FileReader();
+    reader.onload=async()=>{
+      try{
+        const d=JSON.parse(reader.result);
+        if(!d||!Array.isArray(d.units)||!Array.isArray(d.locations)) throw new Error("shape");
+        if(cloudMode){
+          if(!window.confirm("Add the "+d.units.length+" units in this backup to your account?")) return;
+          try{
+            await cloudBulkUpload(d.locations,d.units);
+            await cloudLoadAll();
+            toast("Backup added to your account · "+d.units.length+" units"); go("dashboard");
+          }catch(err){ syncFail(err); }
+          return;
+        }
+        if(state.units.length && !window.confirm("Replace everything currently in the app with this backup? Download a backup first if you're unsure.")) return;
+        state.locations=d.locations; state.units=d.units; state.unitId=null; state.pick=[];
+        persist(); toast("Backup restored · "+d.units.length+" units"); go("dashboard");
+      }catch(err){ toast("Couldn't read that file — is it a ServiceTag backup?"); }
+    };
+    reader.onerror=()=>toast("Couldn't open that file");
+    reader.readAsText(file);
+  }
+
+  /* ---------------- boot ---------------- */
+  function renderAccount(){
+    const foot=document.getElementById("account-foot"); if(!foot)return;
+    const s=state.session||{};
+    const who=s.provider==="Local"?"Local · this device only"
+      :(s.email?esc(s.email):(s.provider?s.provider+" account":"—"));
+    const sub=cloudMode?'<div style="font-size:10.5px;color:#8E8B82;margin-bottom:9px;">synced to your account</div>':"";
+    foot.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:${cloudMode?"3":"9"}px;color:#CFCCC3;word-break:break-all;"><span style="width:8px;height:8px;border-radius:50%;background:#7CD389;flex:none;"></span>${who}</div>${sub}
+      <button class="btn ghost sm" data-act="signout" style="color:#CFCCC3;border:1px solid rgba(255,255,255,.16);">Sign out</button>`;
+  }
+  function showLogin(){
+    document.getElementById("login").classList.add("show");
+    document.querySelector(".app").style.display="none";
+  }
+  function enterApp(){
+    document.getElementById("login").classList.remove("show");
+    document.querySelector(".app").style.display="grid";
+    renderAccount(); go("dashboard");
+  }
+  function signIn(provider){
+    if(provider==="Local"){
+      state.session={provider,since:now()}; persist(); enterApp();
+      toast("Working on this device"); return;
+    }
+    if(BACKEND){
+      // Real OAuth: navigates away to Google/Apple and returns with a session.
+      sb.auth.signInWithOAuth({
+        provider:provider.toLowerCase(),
+        options:{redirectTo:window.location.origin+window.location.pathname}
+      }).then(({error})=>{ if(error) toast("Sign-in failed: "+error.message); });
+      return;
+    }
+    state.session={provider,since:now()}; persist(); enterApp();
+    toast("Signed in with "+provider+" · simulated");
+  }
+  async function signOut(){
+    if(cloudMode){
+      try{ await sb.auth.signOut(); }catch(e){}
+      cloudMode=false; state.units=[]; state.locations=[];
+      const local=await Store.load();   // put any device-only data back in view for guest mode
+      if(local){ state.units=local.units||[]; state.locations=local.locations||[]; }
+    }
+    state.session=null; persist(); showLogin();
+  }
+
+  async function cloudEnter(session){
+    cloudMode=true;
+    const user=session.user||{};
+    const prov=(user.app_metadata&&user.app_metadata.provider)||"account";
+    state.session={provider:prov.charAt(0).toUpperCase()+prov.slice(1),email:user.email||"",real:true,since:now()};
+    try{ await cloudLoadAll(); }
+    catch(err){ console.error(err); toast("⚠ Couldn't load your data — check connection"); }
+    enterApp();
+    // One-time offer: move device-only data into the account.
+    try{
+      const flag="servicetag:migrated:"+user.id;
+      if(!localStorage.getItem(flag)){
+        const local=JSON.parse(localStorage.getItem(KEY)||"null");
+        if(local&&local.units&&local.units.length){
+          const n=local.units.length;
+          if(window.confirm(`Move the ${n} unit${n>1?"s":""} saved on this device into your account?`)){
+            await cloudBulkUpload(local.locations||[],local.units);
+            await cloudLoadAll(); go("dashboard");
+            toast(`Moved ${n} unit${n>1?"s":""} into your account`);
+          }
+          localStorage.setItem(flag,"1");   // asked once, either way
+        } else localStorage.setItem(flag,"1");
+      }
+    }catch(e){ console.error(e); }
+  }
+
+  /* ---------------- theme ---------------- */
+  function toggleTheme(){
+    const root=document.documentElement;
+    const dark=root.getAttribute("data-theme")==="dark";
+    const next=dark?"light":"dark";
+    root.setAttribute("data-theme",next);
+    try{ localStorage.setItem("servicetag:theme",next); }catch(e){}
+    const meta=document.querySelector('meta[name="theme-color"]');
+    if(meta) meta.setAttribute("content", next==="dark"?"#17181B":"#2C2F36");
+  }
+
+  (async function init(){
+    document.querySelectorAll("#theme-toggle,#theme-toggle-login").forEach(b=>b.addEventListener("click",toggleTheme));
+    const fine=document.getElementById("login-fine");
+    if(fine&&BACKEND) fine.innerHTML="Google and Apple sign-in are live — your data syncs to your account.<br>Without an account, your data stays only on this device.";
+
+    const loaded=await Store.load();
+    if(loaded){ state=Object.assign(state,loaded); state.view="dashboard"; state.unitId=null; state.pick=[]; }
+    // Never trust a persisted non-guest session; real sessions come from Supabase below.
+    if(state.session&&state.session.provider!=="Local") state.session=null;
+
+    if(BACKEND){
+      const {data}=await sb.auth.getSession();
+      if(data&&data.session){ await cloudEnter(data.session); }
+      else if(state.session){ enterApp(); }
+      else { showLogin(); }
+      sb.auth.onAuthStateChange((event,session)=>{
+        if(event==="SIGNED_IN"&&session&&!cloudMode){ cloudEnter(session); }
+        if(event==="SIGNED_OUT"&&cloudMode){ cloudMode=false; state.session=null; showLogin(); }
+      });
+      return;
+    }
+    if(state.session) enterApp(); else showLogin();
+  })();
+})();
+</script>
+<script>
+  /* Offline cache: keeps the app openable on the floor with no signal. */
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("./sw.js").catch(function () { /* fine if it fails (e.g. in preview) */ });
+    });
+  }
+</script>
+</body>
+</html>
