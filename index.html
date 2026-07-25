@@ -309,6 +309,20 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .toast .ok{width:8px;height:8px;border-radius:50%;background:#7CD389;}
 
+  .modal-back{position:fixed;inset:0;background:rgba(25,24,21,.45);display:none;align-items:center;justify-content:center;z-index:90;padding:20px;}
+  .modal-back.show{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow);width:100%;max-width:460px;max-height:86vh;overflow-y:auto;padding:22px;}
+  .modal h2{font-size:17px;margin-bottom:4px;}
+  .modal .x{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;line-height:1;}
+  .modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:16px;}
+  .period-pick{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px;}
+  .pp{border:1px solid var(--line-2);background:var(--surface);border-radius:20px;padding:6px 14px;font-size:13.5px;font-weight:500;color:var(--muted);}
+  .pp:hover{border-color:var(--muted);}
+  .pp.sel{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .rep-stat{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;}
+  .rep-stat:last-child{border-bottom:none;}
+  .rep-stat .n{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:17px;}
+  input[type=date]{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--radius);background:var(--surface);color:var(--ink);font-family:inherit;font-size:15px;}
   .mobile-nav{display:none;}
 
   .login{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:var(--paper);padding:26px;z-index:100;}
@@ -412,6 +426,28 @@
       <div class="spacer"></div>
     </div>
     <div class="content" id="content"></div>
+  </div>
+</div>
+<div class="modal-back" id="report-modal">
+  <div class="modal" style="position:relative;">
+    <button class="x" data-act="report-close" aria-label="Close">×</button>
+    <div class="modal-head"><div>
+      <h2>Activity report</h2>
+      <div class="muted" style="font-size:13px;" id="rep-range"></div>
+    </div></div>
+    <div class="period-pick" id="rep-period">
+      <button class="pp sel" data-period="day">Today</button>
+      <button class="pp" data-period="week">This week</button>
+      <button class="pp" data-period="month">This month</button>
+      <button class="pp" data-period="custom">Custom</button>
+    </div>
+    <div class="two" id="rep-custom" style="display:none;">
+      <label class="field"><span>From</span><input type="date" id="rep-from"></label>
+      <label class="field"><span>To</span><input type="date" id="rep-to"></label>
+    </div>
+    <div id="rep-summary"></div>
+    <button class="btn primary" id="rep-export" style="width:100%;justify-content:center;margin-top:18px;">⤓ Export to Excel</button>
+    <div class="muted" style="font-size:12px;margin-top:10px;">Shipped units export with destination, reference #, and tracking # in separate columns.</div>
   </div>
 </div>
 <div class="toast" id="toast"><span class="ok"></span><span id="toast-msg"></span></div>
@@ -682,7 +718,8 @@
         <div style="flex:1;"><strong>${needs.length} unit${needs.length>1?"s":""} waiting on inspection.</strong>
         <span class="muted"> Grade and route them from the audit station.</span></div>
         <button class="btn sm" data-view="audit">Open audit</button></div>`:""}
-      <div class="section-h"><h2>Recent activity</h2><span class="line"></span></div>
+      <div class="section-h"><h2>Recent activity</h2><span class="line"></span>
+        <button class="btn sm" data-act="report">⤓ Report</button></div>
       <div class="card" style="padding:6px 18px;">
         <div class="feed">${feed||'<div class="muted" style="padding:14px 0;">No activity yet.</div>'}</div>
       </div>`;
@@ -977,6 +1014,19 @@
     const addr=e.target.closest("[data-addpick]");
     if(addr){ if(!state.pick.includes(addr.dataset.addpick))state.pick.push(addr.dataset.addpick); document.getElementById("ship-q").value=""; go("ship"); return; }
 
+    if(e.target.closest("[data-act='report']")){ openReport(); return; }
+    if(e.target.closest("[data-act='report-close']")){ closeReport(); return; }
+    if(e.target.id==="report-modal"){ closeReport(); return; }
+    if(e.target.id==="rep-export"){ exportReport(); return; }
+    const pp=e.target.closest("#rep-period .pp");
+    if(pp){
+      repPeriod=pp.dataset.period;
+      document.querySelectorAll("#rep-period .pp").forEach(b=>b.classList.remove("sel"));
+      pp.classList.add("sel");
+      document.getElementById("rep-custom").style.display=repPeriod==="custom"?"grid":"none";
+      renderReportSummary();
+      return;
+    }
     if(e.target.id==="loc-add"){ addLoc(); return; }
     if(e.target.closest("[data-act='export']")){ exportData(); return; }
     if(e.target.closest("[data-act='import']")){ const f=document.getElementById("import-file"); if(f) f.click(); return; }
@@ -1010,10 +1060,12 @@
     if(e.target.id==="import-file"){ const f=e.target.files&&e.target.files[0]; if(f) importData(f); e.target.value=""; }
     if(e.target.id==="sf-file"){ const f=e.target.files&&e.target.files[0]; if(f) parseShipFile(f); e.target.value=""; }
     if(e.target.id==="cu-file"){ const f=e.target.files&&e.target.files[0]; if(f) parseCatchupFile(f); e.target.value=""; }
+    if(/^rep-(from|to)$/.test(e.target.id||"")){ renderReportSummary(); }
     if(/^sf-map-/.test(e.target.id||"")){ replanShipFile(); }
     if(/^cu-map-/.test(e.target.id||"")){ replanCatchup(); }
   });
   document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"){ const m=document.getElementById("report-modal"); if(m&&m.classList.contains("show")){ closeReport(); return; } }
     if(e.target.id==="scan-input"&&e.key==="Enter"){
       const v=e.target.value.trim().toLowerCase();
       const u=state.units.find(x=>x.sn.toLowerCase()===v)||state.units.find(x=>x.sn.toLowerCase().includes(v)&&v);
@@ -1525,9 +1577,160 @@
     go("inventory");
   }
 
+  /* ---------------- activity report ---------------- */
+  let repPeriod="day";
+
+  function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+  function repRange(period){
+    const now_=new Date();
+    let from,to=now_;
+    if(period==="day"){ from=startOfDay(now_); }
+    else if(period==="week"){
+      const d=startOfDay(now_);
+      const dow=(d.getDay()+6)%7;          // Monday = 0
+      d.setDate(d.getDate()-dow); from=d;
+    }
+    else if(period==="month"){ from=new Date(now_.getFullYear(),now_.getMonth(),1); }
+    else {
+      const f=document.getElementById("rep-from"), t=document.getElementById("rep-to");
+      from=f&&f.value?new Date(f.value+"T00:00:00"):startOfDay(now_);
+      to=t&&t.value?new Date(t.value+"T23:59:59"):now_;
+    }
+    return {from:from.getTime(),to:to.getTime()};
+  }
+  const dstr=ts=>{ const d=new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+  const dtstr=ts=>{ const d=new Date(ts); return `${dstr(ts)} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+
+  // Shipped notes are stored as "To X · Ref Y · Tracking Z" — split them back into columns.
+  function parseShipNote(note){
+    const out={dest:"",ref:"",tracking:""};
+    String(note||"").split("·").forEach(part=>{
+      const p=part.trim();
+      let m;
+      if((m=p.match(/^To\s+(.+)$/i))) out.dest=m[1].trim();
+      else if((m=p.match(/^Ref\s+(.+)$/i))) out.ref=m[1].trim();
+      else if((m=p.match(/^Tracking\s+(.+)$/i))) out.tracking=m[1].trim();
+    });
+    return out;
+  }
+
+  // Pure: collect everything that happened in the window.
+  function buildReport(range){
+    const rep={shipped:[],received:[],inspections:[],moves:[],from:range.from,to:range.to};
+    state.units.forEach(u=>{
+      u.events.forEach(e=>{
+        if(e.ts<range.from||e.ts>range.to) return;
+        const base={sn:u.sn,sku:u.sku||"",desc:u.desc||"",ts:e.ts};
+        if(e.type==="shipped"){
+          const p=parseShipNote(e.note);
+          rep.shipped.push(Object.assign({},base,{grade:u.grade,dest:p.dest,ref:p.ref,tracking:p.tracking,note:e.note||""}));
+        }else if(e.type==="received"){
+          rep.received.push(Object.assign({},base,{location:locName(e.location||u.location),note:e.note||""}));
+        }else if(e.type==="inspected"||e.type==="graded"||e.type==="note"){
+          rep.inspections.push(Object.assign({},base,{grade:e.grade||"",status:e.disposition?dispLabel[e.disposition]:"",note:e.note||""}));
+        }else if(e.type==="moved"){
+          rep.moves.push(Object.assign({},base,{location:locName(e.location),note:e.note||""}));
+        }
+      });
+    });
+    [rep.shipped,rep.received,rep.inspections,rep.moves].forEach(a=>a.sort((x,y)=>x.ts-y.ts));
+    return rep;
+  }
+
+  function renderReportSummary(){
+    const range=repRange(repPeriod);
+    const rep=buildReport(range);
+    const rangeEl=document.getElementById("rep-range");
+    if(rangeEl) rangeEl.textContent=dstr(range.from)===dstr(range.to)
+      ? dstr(range.from) : `${dstr(range.from)} → ${dstr(range.to)}`;
+    const rows=[
+      ["Received",rep.received.length,"#C99A1E"],
+      ["Inspected / graded",rep.inspections.length,"var(--g-b)"],
+      ["Shipped",rep.shipped.length,"var(--g-scrap)"],
+      ["Moved",rep.moves.length,"var(--muted)"],
+    ];
+    const total=rep.received.length+rep.inspections.length+rep.shipped.length+rep.moves.length;
+    const box=document.getElementById("rep-summary");
+    if(!box) return rep;
+    box.innerHTML=total
+      ? rows.map(([l,n,c])=>`<div class="rep-stat"><span><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:8px;"></span>${l}</span><span class="n">${n}</span></div>`).join("")
+      : `<div class="pick-empty">No activity in this period.</div>`;
+    const btn=document.getElementById("rep-export");
+    if(btn){ btn.disabled=!total; btn.style.opacity=total?"1":".5"; }
+    return rep;
+  }
+
+  function openReport(){
+    repPeriod="day";
+    document.querySelectorAll("#rep-period .pp").forEach(b=>b.classList.toggle("sel",b.dataset.period==="day"));
+    document.getElementById("rep-custom").style.display="none";
+    const today=dstr(now_ts());
+    const f=document.getElementById("rep-from"), t=document.getElementById("rep-to");
+    if(f&&!f.value) f.value=today;
+    if(t&&!t.value) t.value=today;
+    document.getElementById("report-modal").classList.add("show");
+    renderReportSummary();
+  }
+  function closeReport(){ document.getElementById("report-modal").classList.remove("show"); }
+  function now_ts(){ return Date.now(); }
+
+  function exportReport(){
+    if(!window.XLSX){ toast("Spreadsheet library didn't load — reconnect and retry"); return; }
+    const range=repRange(repPeriod);
+    const rep=buildReport(range);
+    const label=dstr(range.from)===dstr(range.to)?dstr(range.from):`${dstr(range.from)}_to_${dstr(range.to)}`;
+    const wb=XLSX.utils.book_new();
+
+    const summary=[
+      {Metric:"Period start",Value:dstr(range.from)},
+      {Metric:"Period end",Value:dstr(range.to)},
+      {Metric:"Generated",Value:dtstr(Date.now())},
+      {Metric:"",Value:""},
+      {Metric:"Units received",Value:rep.received.length},
+      {Metric:"Inspections logged",Value:rep.inspections.length},
+      {Metric:"Units shipped",Value:rep.shipped.length},
+      {Metric:"Units moved",Value:rep.moves.length},
+      {Metric:"",Value:""},
+      {Metric:"Total units in system",Value:state.units.length},
+      {Metric:"Currently needs inspection",Value:state.units.filter(u=>u.disposition==="needs-inspection").length},
+      {Metric:"Currently in stock",Value:state.units.filter(u=>u.disposition==="stock").length},
+      {Metric:"Currently in refurb",Value:state.units.filter(u=>u.disposition==="refurb").length},
+    ];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summary),"Summary");
+
+    // Shipped — the sheet that reconciles against the daily shipping record
+    const shipped=rep.shipped.map(r=>({
+      "Date":dtstr(r.ts),"Serial":r.sn,"Part / SKU":r.sku,"Description":r.desc,
+      "Grade":r.grade==="none"?"":r.grade,"Destination":r.dest,"Reference #":r.ref,"Tracking #":r.tracking,
+    }));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(shipped.length?shipped:[{"Date":"","Serial":"","Part / SKU":"","Description":"","Grade":"","Destination":"","Reference #":"","Tracking #":""}]),"Shipped");
+
+    const received=rep.received.map(r=>({
+      "Date":dtstr(r.ts),"Serial":r.sn,"Part / SKU":r.sku,"Description":r.desc,"Location":r.location,"Note":r.note,
+    }));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(received.length?received:[{"Date":"","Serial":"","Part / SKU":"","Description":"","Location":"","Note":""}]),"Received");
+
+    const insp=rep.inspections.map(r=>({
+      "Date":dtstr(r.ts),"Serial":r.sn,"Part / SKU":r.sku,"Grade set":r.grade,"Status set":r.status,"Note":r.note,
+    }));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(insp.length?insp:[{"Date":"","Serial":"","Part / SKU":"","Grade set":"","Status set":"","Note":""}]),"Inspections");
+
+    // Full current snapshot, so the file stands alone as a record
+    const snap=state.units.map(u=>({
+      "Serial":u.sn,"Part / SKU":u.sku||"","Description":u.desc||"",
+      "Grade":u.grade==="none"?"":u.grade,"Status":dispLabel[u.disposition]||u.disposition,
+      "Location":locName(u.location),"Received":dstr(u.createdAt),
+      "Last activity":dtstr(u.events[u.events.length-1].ts),"Entries":u.events.length,
+    }));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(snap.length?snap:[{"Serial":""}]),"Inventory snapshot");
+
+    XLSX.writeFile(wb,`ServiceTag-report-${label}.xlsx`);
+    toast(`Report exported · ${rep.shipped.length} shipped, ${rep.received.length} received`);
+  }
+
   /* test hook for headless verification (harmless in production) */
   window.STDebug={buildRmaPlan,processRmaPlan,parseCsv,buildShipPlan,detectShipColumns,
-    buildCatchupPlan,detectCatchupColumns,normGrade,normDisp};
+    buildCatchupPlan,detectCatchupColumns,normGrade,normDisp,buildReport,repRange,parseShipNote};
 
   function exportData(){
     const payload={app:"servicetag",version:1,exportedAt:new Date().toISOString(),locations:state.locations,units:state.units};
