@@ -398,6 +398,19 @@
       Continue with Apple
     </button>
     <div class="login-divider">or</div>
+    <div id="email-auth">
+      <label class="field" style="text-align:left;"><span>Email</span>
+        <input type="email" id="li-email" placeholder="you@company.com" autocomplete="email" autocapitalize="off" autocorrect="off"></label>
+      <label class="field" style="text-align:left;"><span>Password</span>
+        <input type="password" id="li-pass" placeholder="At least 6 characters" autocomplete="current-password"></label>
+      <div id="li-msg" style="font-size:12.5px;margin:-4px 0 12px;display:none;"></div>
+      <button class="btn primary" id="li-email-go" style="width:100%;justify-content:center;">Sign in</button>
+      <div style="margin-top:10px;font-size:13px;color:var(--muted);">
+        <span id="li-toggle-text">New here?</span>
+        <button class="guest" id="li-toggle" style="font-size:13px;padding:2px 4px;">Create an account</button>
+      </div>
+    </div>
+    <div class="login-divider">or</div>
     <button class="guest" id="li-guest">Continue without an account</button>
     <p class="login-fine" id="login-fine">Without an account, your data stays only on this device.<br>Prototype — Google and Apple sign-in are simulated until the backend is connected.</p>
   </div>
@@ -462,8 +475,8 @@
    * Get both from: Supabase dashboard → Project Settings → API.
    * Leave blank to keep everything on-device (guest mode).
    * ============================================================ */
-  const SUPABASE_URL = "";        // e.g. "https://abcdefgh.supabase.co"
-  const SUPABASE_ANON_KEY = "";   // the long "anon public" key
+  const SUPABASE_URL = "https://biftnemsmwyyigsyxaie.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpZnRuZW1zbXd5eWlnc3l4YWllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyOTA1NTgsImV4cCI6MjA5OTg2NjU1OH0.4JWnHEJjtaczk1QZ_yhbLhXBTn20utXIIczUkT5JewI";
   /* To make Google/Apple sign-in REAL:
    *  1. Create a free project at supabase.com and run servicetag-schema.sql
    *  2. Project Settings → API → copy the URL and anon public key above
@@ -952,6 +965,8 @@
   document.addEventListener("click",e=>{
     if(e.target.closest("#li-google")){ signIn("Google"); return; }
     if(e.target.closest("#li-apple")){ signIn("Apple"); return; }
+    if(e.target.closest("#li-email-go")){ emailAuth(); return; }
+    if(e.target.closest("#li-toggle")){ toggleEmailMode(); return; }
     if(e.target.closest("#li-guest")){ signIn("Local"); return; }
     if(e.target.closest("[data-act='signout']")){ signOut(); return; }
     const nav=e.target.closest("[data-view]");
@@ -1065,6 +1080,7 @@
     if(/^cu-map-/.test(e.target.id||"")){ replanCatchup(); }
   });
   document.addEventListener("keydown",e=>{
+    if((e.target.id==="li-email"||e.target.id==="li-pass")&&e.key==="Enter"){ emailAuth(); return; }
     if(e.key==="Escape"){ const m=document.getElementById("report-modal"); if(m&&m.classList.contains("show")){ closeReport(); return; } }
     if(e.target.id==="scan-input"&&e.key==="Enter"){
       const v=e.target.value.trim().toLowerCase();
@@ -1785,6 +1801,58 @@
     document.querySelector(".app").style.display="grid";
     renderAccount(); go("dashboard");
   }
+  let emailMode="signin";   // or "signup"
+  function liMsg(text,kind){
+    const el=document.getElementById("li-msg"); if(!el)return;
+    el.textContent=text||"";
+    if(!text){ el.style.display="none"; return; }
+    el.style.display="block";
+    el.style.color = kind==="ok" ? "var(--g-a)" : "var(--g-d)";
+  }
+  function setEmailMode(mode){
+    emailMode=mode;
+    const signin = mode==="signin";
+    document.getElementById("li-email-go").textContent = signin ? "Sign in" : "Create account";
+    document.getElementById("li-toggle-text").textContent = signin ? "New here?" : "Already have an account?";
+    document.getElementById("li-toggle").textContent = signin ? "Create an account" : "Sign in instead";
+    document.getElementById("li-pass").setAttribute("autocomplete", signin ? "current-password" : "new-password");
+  }
+  function toggleEmailMode(){
+    setEmailMode(emailMode==="signin" ? "signup" : "signin");
+    liMsg("");
+  }
+  async function emailAuth(){
+    const email=(document.getElementById("li-email").value||"").trim();
+    const pass=document.getElementById("li-pass").value||"";
+    if(!email||!pass){ liMsg("Enter an email and password."); return; }
+    if(pass.length<6){ liMsg("Password must be at least 6 characters."); return; }
+    if(!BACKEND){ liMsg("Cloud accounts aren't configured yet — use \u201Ccontinue without an account\u201D."); return; }
+    const btn=document.getElementById("li-email-go");
+    btn.disabled=true; btn.textContent = emailMode==="signin" ? "Signing in…" : "Creating…";
+    liMsg("");
+    try{
+      if(emailMode==="signup"){
+        const {data,error}=await sb.auth.signUp({email,password:pass});
+        if(error) throw error;
+        if(data && data.user && !data.session){
+          setEmailMode("signin");
+          liMsg("Account created. Check your email to confirm, then sign in.","ok");
+        }
+        // if a session came back, onAuthStateChange takes over from here
+      }else{
+        const {error}=await sb.auth.signInWithPassword({email,password:pass});
+        if(error) throw error;
+      }
+    }catch(err){
+      const m=(err&&err.message)||"Something went wrong.";
+      liMsg(/Invalid login/i.test(m) ? "Email or password is incorrect." : m);
+    }finally{
+      btn.disabled=false;
+      // re-derive from the current mode; it may have changed during success handling
+      btn.textContent = emailMode==="signin" ? "Sign in" : "Create account";
+    }
+  }
+
   function signIn(provider){
     if(provider==="Local"){
       state.session={provider,since:now()}; persist(); enterApp();
@@ -1851,7 +1919,7 @@
   (async function init(){
     document.querySelectorAll("#theme-toggle,#theme-toggle-login").forEach(b=>b.addEventListener("click",toggleTheme));
     const fine=document.getElementById("login-fine");
-    if(fine&&BACKEND) fine.innerHTML="Google and Apple sign-in are live — your data syncs to your account.<br>Without an account, your data stays only on this device.";
+    if(fine&&BACKEND) fine.innerHTML="Email sign-up is live — your data syncs to your account and is private to you.<br>Google and Apple require setup in the Supabase dashboard before they work.";
 
     const loaded=await Store.load();
     if(loaded){ state=Object.assign(state,loaded); state.view="dashboard"; state.unitId=null; state.pick=[]; }
