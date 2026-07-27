@@ -5,7 +5,7 @@
  *  - Everything else (fonts, etc.): cache-first, filled in as it's fetched.
  * Bump CACHE when you want to force-clear old cached assets.
  */
-const CACHE = "servicetag-shell-v7";
+const CACHE = "servicetag-shell-v8";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -47,8 +47,10 @@ self.addEventListener("fetch", (e) => {
     if (cached) return cached;
     try {
       const res = await fetch(req);
-      const c = await caches.open(CACHE);
-      c.put(req, res.clone()).catch(() => {});
+      if (res && res.ok) {
+        const c = await caches.open(CACHE);
+        c.put(req, res.clone()).catch(() => {});
+      }
       return res;
     } catch (_) {
       return cached || Response.error();

@@ -526,6 +526,11 @@
 
   function gradeChip(g){ g=g||"none"; const cls=g==="none"?"none":g; return `<span class="grade ${cls}"><span class="dot"></span>${g==="none"?"ungraded":g}</span>`; }
   function dispPill(d){ return `<span class="pill disp-${d}"><span class="dot"></span>${dispLabel[d]||d}</span>`; }
+  // A unit should always have at least one event, but a partial save can leave none —
+  // never let that crash a whole view.
+  function lastTs(u){
+    return (u.events && u.events.length) ? u.events[u.events.length-1].ts : u.createdAt;
+  }
   function locName(id){ if(!id) return "Unassigned"; const l=state.locations.find(x=>x.id===id); return l?l.name:"Unassigned"; }
 
   /* ---------------- state ---------------- */
@@ -755,7 +760,7 @@
         <td data-h="Grade">${gradeChip(u.grade)}</td>
         <td data-h="Status">${dispPill(u.disposition)}</td>
         <td data-h="Location">${esc(locName(u.location))}</td>
-        <td data-h="Last update" class="mono" style="font-size:12.5px;color:var(--muted);">${fmt(u.events[u.events.length-1].ts)}</td>
+        <td data-h="Last update" class="mono" style="font-size:12.5px;color:var(--muted);">${fmt(lastTs(u))}</td>
       </tr>`;
     }).join("");
     const body= list.length? `<table class="table">
@@ -776,7 +781,11 @@
   VIEW.unit=function(){
     const u=state.units.find(x=>x.id===state.unitId);
     if(!u) return `<button class="back" data-view="inventory">← Inventory</button><div class="empty">Unit not found.</div>`;
-    const evs=u.events.slice().reverse();
+    const evs=(u.events||[]).slice().reverse();
+    if(!evs.length){
+      // defensive: a unit whose history failed to save should say so, not look blank
+      evs.push({ts:u.createdAt,type:"received",by:"—",note:"No history entries were saved for this unit."});
+    }
     const timeline=evs.map(e=>{
       const changes=[];
       if(e.grade)changes.push(gradeChip(e.grade));
@@ -852,6 +861,7 @@
           <label class="field"><span>Spreadsheet (.xls, .xlsx, .csv)</span>
             <input type="file" id="cu-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
           <div id="cu-mapping"></div>
+          <div id="cu-error"></div>
           <div id="cu-preview"></div>
           <button class="btn primary" id="cu-go" style="width:100%;justify-content:center;display:none;">Import</button>
           <div class="muted" style="font-size:12.5px;margin-top:12px;">Serials already in the app are skipped. New locations are created automatically.</div>
@@ -889,6 +899,7 @@
         <label class="field"><span>Packing list / shipping record (.xls, .xlsx, or .csv)</span>
           <input type="file" id="sf-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
         <div id="sf-mapping"></div>
+        <div id="sf-error"></div>
         <div id="sf-preview"></div>
         <button class="btn primary" id="sf-go" style="width:100%;justify-content:center;display:none;">Ship</button>
         <div class="muted" style="font-size:12.5px;margin-top:12px;">Fix the column guesses if needed. Serials not in inventory are flagged and skipped.</div>
@@ -907,7 +918,7 @@
   function renderAuditResult(u){
     const box=document.getElementById("audit-result");
     if(!u){ box.innerHTML=""; return; }
-    const recent=u.events.slice().reverse().slice(0,3).map(e=>`
+    const recent=(u.events||[]).slice().reverse().slice(0,3).map(e=>`
       <div style="display:flex;gap:11px;padding:7px 0;border-top:1px solid var(--line);">
         <span class="mono" style="font-size:12px;color:var(--muted);white-space:nowrap;">${fmt(e.ts)}</span>
         <span style="font-size:13.5px;"><strong style="font-family:'Space Grotesk';">${esc(e.type)}</strong>${e.note?" · "+esc(e.note):""}</span>
@@ -1110,7 +1121,7 @@
         <td data-h="Serial"><div class="sn">${flagged?'<span class="flag"></span>':""}${esc(u.sn)}</div><div class="desc">${esc(u.desc)}</div></td>
         <td data-h="Grade">${gradeChip(u.grade)}</td><td data-h="Status">${dispPill(u.disposition)}</td>
         <td data-h="Location">${esc(locName(u.location))}</td>
-        <td data-h="Last update" class="mono" style="font-size:12.5px;color:var(--muted);">${fmt(u.events[u.events.length-1].ts)}</td></tr>`;
+        <td data-h="Last update" class="mono" style="font-size:12.5px;color:var(--muted);">${fmt(lastTs(u))}</td></tr>`;
     }).join("");
     const html= list.length?`<table class="table"><thead><tr><th>Serial / part</th><th>Grade</th><th>Status</th><th>Location</th><th>Last update</th></tr></thead><tbody>${rows}</tbody></table>`
       :`<div class="empty"><div class="disp">No matches</div>Try clearing the filters.</div>`;
@@ -1224,6 +1235,62 @@
   }
 
 
+  /* ---------------- batched cloud writes ----------------
+   * Supabase accepts arrays, so N units = a couple of requests, not 3N.
+   * Chunked so very large files don't exceed request limits.
+   */
+  const CHUNK = 200;
+  async function insertChunked(table, rows){
+    const out = [];
+    for(let i=0; i<rows.length; i+=CHUNK){
+      const { data, error } = await sb.from(table).insert(rows.slice(i, i+CHUNK)).select();
+      if(error) throw error;
+      if(data) out.push(...data);
+    }
+    return out;
+  }
+  async function insertChunkedQuiet(table, rows){
+    for(let i=0; i<rows.length; i+=CHUNK){
+      const { error } = await sb.from(table).insert(rows.slice(i, i+CHUNK));
+      if(error) throw error;
+    }
+  }
+  function friendlyDbError(err){
+    const m = (err && (err.message || err.hint)) || "Unknown error";
+    if(/duplicate key|unique constraint/i.test(m)) return "Some serials are already in your inventory. Re-upload after removing them, or reload the page to refresh.";
+    if(/JWT|expired|not authenticated/i.test(m)) return "Your session expired. Sign out and back in, then try again.";
+    if(/row-level security|violates row-level/i.test(m)) return "Permission denied by the database. Sign out and back in, then try again.";
+    if(/Failed to fetch|NetworkError|network/i.test(m)) return "Couldn't reach the server. Check your connection and try again.";
+    return m;
+  }
+  function panelError(boxId, msg){
+    const box = document.getElementById(boxId);
+    if(!box) return;
+    box.innerHTML = msg
+      ? `<div class="pick-empty" style="border-color:var(--g-d);color:var(--g-d);text-align:left;margin-bottom:12px;">${esc(msg)}</div>`
+      : "";
+  }
+
+  // The spreadsheet reader is a CDN script; retry a mirror before giving up.
+  async function ensureXLSX(){
+    if(window.XLSX) return true;
+    const urls = [
+      "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+      "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
+    ];
+    for(const u of urls){
+      try{
+        await new Promise((res, rej) => {
+          const s = document.createElement("script");
+          s.src = u; s.onload = res; s.onerror = () => rej(new Error("load failed"));
+          document.head.appendChild(s);
+        });
+        if(window.XLSX) return true;
+      }catch(e){ /* try next mirror */ }
+    }
+    return false;
+  }
+
   // Shared reader: any .csv/.xls/.xlsx → array of row objects keyed by header.
   async function readTabularFile(file){
     const ext=(file.name.split(".").pop()||"").toLowerCase();
@@ -1231,7 +1298,10 @@
       const text=await file.text();
       return parseCsv(text);
     }
-    if(!window.XLSX) throw new Error("The spreadsheet reader didn't load — check your connection once and retry, or export the report as CSV.");
+    if(!window.XLSX){
+      const loaded = await ensureXLSX();
+      if(!loaded) throw new Error("Couldn't load the spreadsheet reader. Check your connection and reload, or save the file as .csv and upload that.");
+    }
     const buf=await file.arrayBuffer();
     const wb=window.XLSX.read(buf,{type:"array"});
     const ws=wb.Sheets[wb.SheetNames[0]];
@@ -1367,6 +1437,7 @@
   }
 
   async function parseShipFile(file){
+    panelError("sf-error","");
     const box=document.getElementById("sf-preview");
     box.innerHTML=`<div class="muted" style="font-size:13px;padding:6px 0;">Reading “${esc(file.name)}”…</div>`;
     try{
@@ -1397,9 +1468,37 @@
     if(!plan.items.length){ toast("Nothing to ship with this mapping"); return; }
     if(!window.confirm(`Mark ${plan.items.length} unit${plan.items.length>1?"s":""} as shipped? This can't be undone in the app.`)) return;
     const btn=document.getElementById("sf-go");
-    btn.disabled=true; btn.textContent="Shipping…";
-    let done=0;
-    plan.items.forEach(it=>{ addEvent(it.unitId,{type:"shipped",note:it.note,disposition:"shipped"}); done++; });
+    panelError("sf-error","");
+    btn.disabled=true; btn.textContent=`Shipping ${plan.items.length}…`;
+
+    try{
+      if(cloudMode){
+        // history entries, batched
+        await insertChunkedQuiet("unit_events", plan.items.map(it=>({
+          unit_id:it.unitId, event_type:"shipped", note:it.note, disposition:"shipped",
+        })));
+        // status update, batched
+        for(let i=0;i<plan.items.length;i+=CHUNK){
+          const ids=plan.items.slice(i,i+CHUNK).map(x=>x.unitId);
+          const {error}=await sb.from("units").update({disposition:"shipped"}).in("id",ids);
+          if(error) throw error;
+        }
+        // mirror into local state so the view is correct immediately
+        plan.items.forEach(it=>{
+          const u=state.units.find(x=>x.id===it.unitId);
+          if(u){ u.events.push({ts:now(),type:"shipped",by:"You",note:it.note,disposition:"shipped"}); u.disposition="shipped"; }
+        });
+      }else{
+        plan.items.forEach(it=>{ addEvent(it.unitId,{type:"shipped",note:it.note,disposition:"shipped"}); });
+      }
+    }catch(err){
+      console.error(err);
+      panelError("sf-error","Shipping failed — nothing was saved. "+friendlyDbError(err));
+      btn.disabled=false; btn.textContent=`Ship ${plan.items.length} unit${plan.items.length===1?"":"s"}`;
+      return;
+    }
+
+    const done=plan.items.length;
     pendingShipFile=null;
     btn.disabled=false;
     toast(`Shipped ${done} unit${done===1?"":"s"} from file${plan.notFound.length?` · ${plan.notFound.length} not found`:""}`);
@@ -1517,6 +1616,7 @@
   }
 
   async function parseCatchupFile(file){
+    panelError("cu-error","");
     const box=document.getElementById("cu-preview");
     box.innerHTML=`<div class="muted" style="font-size:13px;padding:6px 0;">Reading “${esc(file.name)}”…</div>`;
     try{
@@ -1558,36 +1658,83 @@
     const plan=buildCatchupPlan(pendingCatchup.rows,readCatchupMap());
     if(!plan.items.length){ toast("Nothing new to import"); return; }
     const btn=document.getElementById("cu-go");
-    btn.disabled=true; btn.textContent="Importing…";
-    const locCache={};
-    let added=0, failed=0;
-    for(const it of plan.items){
-      try{
-        let locId="";
-        if(it.locName){
-          if(!(it.locName in locCache)) locCache[it.locName]=await ensureLocation(it.locName);
-          locId=locCache[it.locName];
+    const prog=t=>{ btn.textContent=t; };
+    panelError("cu-error","");
+    btn.disabled=true;
+
+    try{
+      if(cloudMode){
+        // 1. create any locations named in the sheet — one request
+        const needed=[...plan.newLocs].filter(n=>!state.locations.some(l=>l.name.toLowerCase()===n.toLowerCase()));
+        if(needed.length){
+          prog("Creating locations…");
+          const made=await insertChunked("locations", needed.map(name=>({name})));
+          made.forEach(l=>state.locations.push({id:l.id,name:l.name}));
         }
-        const common={sku:it.sku,desc:it.desc,location:locId,ref:""};
-        let unit;
-        if(cloudMode){
-          const created=await cloudReceiveUnits([it.sn],common);
-          unit=created[0]; state.units.push(unit);
-        }else{
-          unit=receiveUnits([it.sn],common)[0];
+        const locIdFor=name=>{
+          if(!name) return null;
+          const l=state.locations.find(x=>x.name.toLowerCase()===name.toLowerCase());
+          return l?l.id:null;
+        };
+
+        // 2. all units — batched
+        prog(`Saving ${plan.items.length} unit${plan.items.length===1?"":"s"}…`);
+        const unitRows=plan.items.map(it=>({
+          sn:it.sn, sku:it.sku||"", description:it.desc||"",
+          grade:it.grade||"none", disposition:it.disposition,
+          location_id:locIdFor(it.locName),
+        }));
+        const made=await insertChunked("units", unitRows);
+
+        // 3. one history entry each — batched, matched by serial (not array order)
+        prog("Saving history…");
+        const bySn={};
+        made.forEach(u=>{ bySn[String(u.sn).toLowerCase()]=u; });
+        const evRows=plan.items.map(it=>{
+          const u=bySn[it.sn.toLowerCase()];
+          if(!u) return null;
+          return {
+            unit_id:u.id, event_type:"received", note:it.note,
+            grade:it.grade||null, disposition:it.disposition,
+            location_id:u.location_id||null,
+          };
+        }).filter(Boolean);
+        if(evRows.length) await insertChunkedQuiet("unit_events", evRows);
+
+        // 4. pull the saved truth back down
+        prog("Refreshing…");
+        await cloudLoadAll();
+        toast(`Imported ${made.length} unit${made.length===1?"":"s"}`);
+      }else{
+        const locCache={};
+        let added=0;
+        for(const it of plan.items){
+          let locId="";
+          if(it.locName){
+            if(!(it.locName in locCache)) locCache[it.locName]=await ensureLocation(it.locName);
+            locId=locCache[it.locName];
+          }
+          const unit=receiveUnits([it.sn],{sku:it.sku,desc:it.desc,location:locId,ref:""})[0];
+          if(it.grade||it.disposition!=="needs-inspection"||it.note!=="Initial inventory import"){
+            addEvent(unit.id,{note:it.note,grade:it.grade||undefined,disposition:it.disposition});
+          }
+          added++;
         }
-        // Overwrite the generic "Received" note/grade/status with the sheet's own state.
-        if(it.grade||it.disposition!=="needs-inspection"||it.note!=="Initial inventory import"){
-          addEvent(unit.id,{note:it.note,grade:it.grade||undefined,disposition:it.disposition});
-        }
-        added++;
-      }catch(err){ console.error(err); failed++; }
+        toast(`Imported ${added} unit${added===1?"":"s"}`);
+      }
+    }catch(err){
+      console.error(err);
+      panelError("cu-error","Import failed — nothing was saved. "+friendlyDbError(err));
+      btn.disabled=false;
+      btn.textContent=`Import ${plan.items.length} unit${plan.items.length===1?"":"s"}`;
+      return;
     }
+
     pendingCatchup=null;
     btn.disabled=false;
-    toast(`Imported ${added} unit${added===1?"":"s"}${failed?`, ${failed} failed`:""}`);
     document.getElementById("cu-mapping").innerHTML="";
     document.getElementById("cu-preview").innerHTML="";
+    panelError("cu-error","");
     btn.style.display="none";
     state.filter={q:"",grade:"",disp:""};
     go("inventory");
@@ -1736,7 +1883,7 @@
       "Serial":u.sn,"Part / SKU":u.sku||"","Description":u.desc||"",
       "Grade":u.grade==="none"?"":u.grade,"Status":dispLabel[u.disposition]||u.disposition,
       "Location":locName(u.location),"Received":dstr(u.createdAt),
-      "Last activity":dtstr(u.events[u.events.length-1].ts),"Entries":u.events.length,
+      "Last activity":dtstr(lastTs(u)),"Entries":u.events.length,
     }));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(snap.length?snap:[{"Serial":""}]),"Inventory snapshot");
 
