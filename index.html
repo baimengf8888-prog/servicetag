@@ -141,7 +141,7 @@
   }
   label.field{display:block;margin-bottom:14px;}
   label.field > span{display:block;font-size:12.5px;font-weight:500;color:var(--muted);margin-bottom:5px;letter-spacing:.01em;}
-  input[type=text],input[type=search],select,textarea{
+  input[type=text],input[type=search],input[type=email],input[type=password],input[type=tel],input[type=number],select,textarea{
     width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--radius);
     background:var(--surface);transition:border-color .12s;
   }
@@ -342,6 +342,13 @@
   .guest{background:none;border:none;color:var(--accent);font-size:14px;font-weight:500;padding:6px;}
   .guest:hover{text-decoration:underline;}
   .login-fine{font-size:11.5px;color:var(--muted);margin-top:22px;line-height:1.6;}
+  .login-seg{display:flex;width:100%;margin-bottom:18px;}
+  .login-seg button{flex:1;padding:9px 0;font-size:14px;}
+  .login-card .field{text-align:left;}
+  .pw-wrap{position:relative;display:block;}
+  .pw-wrap input{padding-right:64px;}
+  .pw-wrap button{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:12px;font-weight:500;padding:5px 8px;border-radius:5px;}
+  .pw-wrap button:hover{color:var(--ink);background:var(--surface-2);}
 
   @media (max-width:860px){
     .app{grid-template-columns:1fr;}
@@ -389,6 +396,27 @@
       </div>
     </div>
     <p class="login-lede">Track each unit's condition and history — from intake to ship.</p>
+
+    <div class="seg login-seg" id="li-seg">
+      <button class="on" data-authmode="signin">Sign in</button>
+      <button data-authmode="signup">Create account</button>
+    </div>
+
+    <div id="email-auth">
+      <label class="field"><span>Email</span>
+        <input type="email" id="li-email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+      <label class="field" style="margin-bottom:8px;"><span>Password</span>
+        <span class="pw-wrap">
+          <input type="password" id="li-pass" autocomplete="current-password">
+          <button type="button" id="li-eye" aria-label="Show password">Show</button>
+        </span></label>
+      <div id="li-hint" class="muted" style="font-size:11.5px;margin:0 0 10px;display:none;">Use at least 6 characters.</div>
+      <div id="li-msg" style="font-size:12.5px;margin:0 0 12px;display:none;"></div>
+      <button class="btn primary" id="li-email-go" style="width:100%;justify-content:center;">Sign in</button>
+      <button class="guest" id="li-forgot" style="font-size:12.5px;margin-top:10px;">Forgot your password?</button>
+    </div>
+
+    <div class="login-divider">or</div>
     <button class="oauth-btn" id="li-google">
       <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
       Continue with Google
@@ -397,22 +425,9 @@
       <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M17.05 12.04c-.03-2.6 2.13-3.85 2.22-3.91-1.21-1.77-3.1-2.01-3.77-2.04-1.6-.16-3.13.94-3.94.94-.81 0-2.07-.92-3.4-.9-1.75.03-3.36 1.02-4.26 2.58-1.82 3.16-.47 7.84 1.3 10.41.86 1.26 1.89 2.67 3.24 2.62 1.3-.05 1.79-.84 3.36-.84 1.57 0 2.01.84 3.39.81 1.4-.03 2.29-1.28 3.15-2.55.99-1.46 1.4-2.87 1.42-2.95-.03-.01-2.72-1.04-2.75-4.13zM14.5 4.5c.72-.87 1.2-2.08 1.07-3.28-1.03.04-2.28.69-3.02 1.56-.66.77-1.24 2-1.08 3.18 1.15.09 2.32-.58 3.03-1.46z"/></svg>
       Continue with Apple
     </button>
-    <div class="login-divider">or</div>
-    <div id="email-auth">
-      <label class="field" style="text-align:left;"><span>Email</span>
-        <input type="email" id="li-email" placeholder="you@company.com" autocomplete="email" autocapitalize="off" autocorrect="off"></label>
-      <label class="field" style="text-align:left;"><span>Password</span>
-        <input type="password" id="li-pass" placeholder="At least 6 characters" autocomplete="current-password"></label>
-      <div id="li-msg" style="font-size:12.5px;margin:-4px 0 12px;display:none;"></div>
-      <button class="btn primary" id="li-email-go" style="width:100%;justify-content:center;">Sign in</button>
-      <div style="margin-top:10px;font-size:13px;color:var(--muted);">
-        <span id="li-toggle-text">New here?</span>
-        <button class="guest" id="li-toggle" style="font-size:13px;padding:2px 4px;">Create an account</button>
-      </div>
-    </div>
-    <div class="login-divider">or</div>
-    <button class="guest" id="li-guest">Continue without an account</button>
-    <p class="login-fine" id="login-fine">Without an account, your data stays only on this device.<br>Prototype — Google and Apple sign-in are simulated until the backend is connected.</p>
+
+    <button class="guest" id="li-guest" style="margin-top:18px;">Try it without an account</button>
+    <p class="login-fine" id="login-fine">Without an account, your data stays only on this device.</p>
   </div>
 </div>
 <div class="app" style="display:none">
@@ -826,7 +841,7 @@
           </div>
           <div class="muted" style="font-size:12px;margin-bottom:14px;">Tap to set the grade for this entry.</div>
           <label class="field"><span>Note</span>
-            <textarea id="u-note" placeholder="What did you find? e.g. fan bearing noise at high RPM"></textarea></label>
+            <textarea id="u-note" placeholder="What did you find?"></textarea></label>
           <div class="two">
             <label class="field"><span>Set status</span><select id="u-disp">${dispOpts}</select></label>
             <label class="field"><span>Move to</span><select id="u-loc">${locOpts}</select></label>
@@ -847,13 +862,13 @@
         <div id="rcv-manual">
         <div id="rcv-fields">
           <label class="field"><span>Serial number</span>
-            <input type="text" id="rcv-sns" placeholder="AIV-PSU-A0501" autocapitalize="characters" autocorrect="off" spellcheck="false" style="font-family:'IBM Plex Mono',monospace;"></label>
+            <input type="text" id="rcv-sns" autocapitalize="characters" autocorrect="off" spellcheck="false" style="font-family:'IBM Plex Mono',monospace;"></label>
           <div class="two">
-            <label class="field"><span>Part / SKU</span><input type="text" id="rcv-sku" placeholder="PSU-1600-PLT"></label>
+            <label class="field"><span>Part / SKU</span><input type="text" id="rcv-sku" ></label>
             ${locField}
           </div>
-          <label class="field"><span>Description</span><input type="text" id="rcv-desc" placeholder="1600W Platinum PSU"></label>
-          <label class="field"><span>Reference <span class="muted">(optional)</span></span><input type="text" id="rcv-ref" placeholder="RMA-2290"></label>
+          <label class="field"><span>Description</span><input type="text" id="rcv-desc" ></label>
+          <label class="field"><span>Reference <span class="muted">(optional)</span></span><input type="text" id="rcv-ref" ></label>
         </div>
         <button class="btn primary" id="rcv-go" style="width:100%;justify-content:center;">Receive</button>
         </div>
@@ -888,10 +903,10 @@
           <h3 style="font-size:15px;margin-bottom:14px;">Shipment <span class="muted mono" style="font-size:13px;">(${state.pick.length})</span></h3>
           <div id="ship-pick" style="margin-bottom:16px;">${pickRows||'<div class="pick-empty">Search and tap to add units.</div>'}</div>
           <div class="two">
-            <label class="field"><span>Destination</span><input type="text" id="ship-dest" placeholder="DC-3 / customer"></label>
-            <label class="field"><span>Reference #</span><input type="text" id="ship-ref" placeholder="SO-4471"></label>
+            <label class="field"><span>Destination</span><input type="text" id="ship-dest" ></label>
+            <label class="field"><span>Reference #</span><input type="text" id="ship-ref" ></label>
           </div>
-          <label class="field"><span>Tracking #</span><input type="text" id="ship-track" placeholder="1Z…"></label>
+          <label class="field"><span>Tracking #</span><input type="text" id="ship-track" ></label>
           <button class="btn primary" id="ship-go" ${state.pick.length?"":"disabled"} style="width:100%;justify-content:center;${state.pick.length?"":"opacity:.5;cursor:default;"}">Ship ${state.pick.length||""} unit${state.pick.length===1?"":"s"}</button>
         </div>
       </div>
@@ -950,10 +965,10 @@
     return `<div style="max-width:560px;">
       ${rows}
       <div style="display:flex;gap:9px;margin-top:14px;">
-        <input type="text" id="loc-new" placeholder="New location name (e.g. Burn-in rack)" style="flex:1;">
+        <input type="text" id="loc-new" placeholder="New location name" style="flex:1;">
         <button class="btn primary" id="loc-add">Add</button>
       </div>
-      <div class="muted" style="font-size:12.5px;margin-top:12px;">Name them the way your floor does — bins, shelves, benches.</div>
+      <div class="muted" style="font-size:12.5px;margin-top:12px;">Name them the way your floor already does.</div>
 
       <div class="card" style="padding:18px;margin-top:26px;">
         <h3 style="font-size:14.5px;margin-bottom:6px;">Data &amp; backup</h3>
@@ -977,7 +992,10 @@
     if(e.target.closest("#li-google")){ signIn("Google"); return; }
     if(e.target.closest("#li-apple")){ signIn("Apple"); return; }
     if(e.target.closest("#li-email-go")){ emailAuth(); return; }
-    if(e.target.closest("#li-toggle")){ toggleEmailMode(); return; }
+    if(e.target.closest("#li-eye")){ togglePassword(); return; }
+    if(e.target.closest("#li-forgot")){ forgotPassword(); return; }
+    const am=e.target.closest("#li-seg button");
+    if(am){ setEmailMode(am.dataset.authmode); liMsg(""); return; }
     if(e.target.closest("#li-guest")){ signIn("Local"); return; }
     if(e.target.closest("[data-act='signout']")){ signOut(); return; }
     const nav=e.target.closest("[data-view]");
@@ -1960,13 +1978,27 @@
     emailMode=mode;
     const signin = mode==="signin";
     document.getElementById("li-email-go").textContent = signin ? "Sign in" : "Create account";
-    document.getElementById("li-toggle-text").textContent = signin ? "New here?" : "Already have an account?";
-    document.getElementById("li-toggle").textContent = signin ? "Create an account" : "Sign in instead";
     document.getElementById("li-pass").setAttribute("autocomplete", signin ? "current-password" : "new-password");
+    document.getElementById("li-hint").style.display = signin ? "none" : "block";
+    document.getElementById("li-forgot").style.display = signin ? "inline" : "none";
+    document.querySelectorAll("#li-seg button").forEach(b=>b.classList.toggle("on", b.dataset.authmode===mode));
   }
-  function toggleEmailMode(){
-    setEmailMode(emailMode==="signin" ? "signup" : "signin");
-    liMsg("");
+  function togglePassword(){
+    const inp=document.getElementById("li-pass"), btn=document.getElementById("li-eye");
+    const showing = inp.type==="text";
+    inp.type = showing ? "password" : "text";
+    btn.textContent = showing ? "Show" : "Hide";
+    btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+  }
+  async function forgotPassword(){
+    const email=(document.getElementById("li-email").value||"").trim();
+    if(!email){ liMsg("Enter your email above first, then tap this again."); return; }
+    if(!BACKEND){ liMsg("Password reset needs the cloud backend."); return; }
+    try{
+      const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+      if(error) throw error;
+      liMsg("Reset link sent. Check your email.","ok");
+    }catch(err){ liMsg((err&&err.message)||"Couldn't send the reset email."); }
   }
   async function emailAuth(){
     const email=(document.getElementById("li-email").value||"").trim();
