@@ -325,7 +325,7 @@
   input[type=date]{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--radius);background:var(--surface);color:var(--ink);font-family:inherit;font-size:15px;}
   .mobile-nav{display:none;}
 
-  .login{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:var(--paper);padding:26px;z-index:100;}
+  .login{position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;background:var(--paper);padding:26px;padding-top:max(40px,6vh);padding-bottom:calc(40px + env(safe-area-inset-bottom));z-index:100;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   .login.show{display:flex;}
   .login-card{width:100%;max-width:368px;text-align:center;}
   .login-brand{display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:6px;}
