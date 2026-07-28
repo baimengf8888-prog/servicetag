@@ -295,7 +295,11 @@
   .quick-grade{margin:16px 0 8px;}
 
   /* locations */
-  .loc-row{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:9px;}
+  .loc-row{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:9px;cursor:pointer;transition:border-color .12s,background .12s;}
+  .loc-row:hover{border-color:var(--line-2);background:#fff;}
+  [data-theme="dark"] .loc-row:hover{background:var(--surface-2);}
+  .loc-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .loc-go{color:var(--muted);font-size:20px;line-height:1;flex:none;padding-left:10px;}
   .loc-row .nm{font-weight:500;display:flex;align-items:center;gap:9px;}
   .loc-row .cnt{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--muted);}
 
@@ -454,6 +458,21 @@
       <div class="spacer"></div>
     </div>
     <div class="content" id="content"></div>
+  </div>
+</div>
+<div class="modal-back" id="loc-modal">
+  <div class="modal" style="position:relative;">
+    <button class="x" data-act="loc-close" aria-label="Close">×</button>
+    <div class="modal-head"><div>
+      <h2 id="loc-title">Location</h2>
+      <div class="muted" style="font-size:13px;" id="loc-sub"></div>
+    </div></div>
+    <div class="search-wrap" id="loc-search-wrap" style="margin-bottom:12px;display:none;">
+      <span class="si">⌕</span>
+      <input type="search" id="loc-q" placeholder="Search within this location…" autocomplete="off">
+    </div>
+    <div id="loc-units" style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+    <div id="loc-actions" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);"></div>
   </div>
 </div>
 <div class="modal-back" id="report-modal">
@@ -969,16 +988,22 @@
   VIEW.locations=function(){
     const rows=state.locations.map(l=>{
       const n=state.units.filter(u=>u.location===l.id).length;
-      return `<div class="loc-row"><div class="nm">◫ ${esc(l.name)} <span class="cnt">${n} unit${n===1?"":"s"}</span></div>
-        <button class="btn ghost sm" data-delloc="${l.id}">remove</button></div>`;
+      return `<div class="loc-row" data-loc="${l.id}" tabindex="0" role="button">
+        <div class="nm">◫ ${esc(l.name)} <span class="cnt">${n} unit${n===1?"":"s"}</span></div>
+        <span class="loc-go">›</span></div>`;
     }).join("");
+    const unassigned=state.units.filter(u=>!u.location).length;
+    const unassignedRow=unassigned?`<div class="loc-row" data-loc="__none__" tabindex="0" role="button">
+        <div class="nm" style="color:var(--muted);">◫ Unassigned <span class="cnt">${unassigned} unit${unassigned===1?"":"s"}</span></div>
+        <span class="loc-go">›</span></div>`:"";
     return `<div style="max-width:560px;">
-      ${rows}
+      ${rows}${unassignedRow}
+      ${state.locations.length?"":'<div class="pick-empty" style="margin-bottom:9px;">No locations yet.</div>'}
       <div style="display:flex;gap:9px;margin-top:14px;">
         <input type="text" id="loc-new" placeholder="New location name" style="flex:1;">
         <button class="btn primary" id="loc-add">Add</button>
       </div>
-      <div class="muted" style="font-size:12.5px;margin-top:12px;">Name them the way your floor already does.</div>
+      <div class="muted" style="font-size:12.5px;margin-top:12px;">Tap a location to see what's in it. Name them the way your floor already does.</div>
 
       <div class="card" style="padding:18px;margin-top:26px;">
         <h3 style="font-size:14.5px;margin-bottom:6px;">Data &amp; backup</h3>
@@ -1069,6 +1094,14 @@
     if(addr){ if(!state.pick.includes(addr.dataset.addpick))state.pick.push(addr.dataset.addpick); document.getElementById("ship-q").value=""; go("ship"); return; }
 
     if(e.target.closest("[data-act='report']")){ openReport(); return; }
+    if(e.target.closest("[data-act='loc-close']")){ closeLocation(); return; }
+    if(e.target.id==="loc-modal"){ closeLocation(); return; }
+    if(e.target.closest("[data-act='loc-delete']")){ deleteOpenLocation(); return; }
+    if(e.target.id==="loc-more"){ locShown+=LOC_PAGE; renderLocUnits(); return; }
+    const locUnit=e.target.closest("#loc-units [data-unit]");
+    if(locUnit){ closeLocation(); go("unit",locUnit.dataset.unit); return; }
+    const locRow=e.target.closest("[data-loc]");
+    if(locRow){ openLocation(locRow.dataset.loc); return; }
     if(e.target.closest("[data-act='report-close']")){ closeReport(); return; }
     if(e.target.id==="report-modal"){ closeReport(); return; }
     if(e.target.id==="rep-export"){ exportReport(); return; }
@@ -1084,14 +1117,6 @@
     if(e.target.id==="loc-add"){ addLoc(); return; }
     if(e.target.closest("[data-act='export']")){ exportData(); return; }
     if(e.target.closest("[data-act='import']")){ const f=document.getElementById("import-file"); if(f) f.click(); return; }
-    const dl=e.target.closest("[data-delloc]");
-    if(dl){
-      const n=state.units.filter(u=>u.location===dl.dataset.delloc).length;
-      if(n>0){toast("Move its "+n+" unit(s) first");return;}
-      state.locations=state.locations.filter(l=>l.id!==dl.dataset.delloc); persist();
-      if(cloudMode) cloudDeleteLocation(dl.dataset.delloc).catch(syncFail);
-      go("locations"); return;
-    }
 
     const seg=e.target.closest("#rcv-seg button");
     if(seg){
@@ -1115,12 +1140,19 @@
     if(e.target.id==="sf-file"){ const f=e.target.files&&e.target.files[0]; if(f) parseShipFile(f); e.target.value=""; }
     if(e.target.id==="cu-file"){ const f=e.target.files&&e.target.files[0]; if(f) parseCatchupFile(f); e.target.value=""; }
     if(/^rep-(from|to)$/.test(e.target.id||"")){ renderReportSummary(); }
+    if(e.target.id==="loc-q"){ locShown=LOC_PAGE; renderLocUnits(); }
     if(/^sf-map-/.test(e.target.id||"")){ replanShipFile(); }
     if(/^cu-map-/.test(e.target.id||"")){ replanCatchup(); }
   });
   document.addEventListener("keydown",e=>{
     if((e.target.id==="li-email"||e.target.id==="li-pass")&&e.key==="Enter"){ emailAuth(); return; }
-    if(e.key==="Escape"){ const m=document.getElementById("report-modal"); if(m&&m.classList.contains("show")){ closeReport(); return; } }
+    if(e.key==="Escape"){
+      const lm=document.getElementById("loc-modal");
+      if(lm&&lm.classList.contains("show")){ closeLocation(); return; }
+      const m=document.getElementById("report-modal");
+      if(m&&m.classList.contains("show")){ closeReport(); return; }
+    }
+    if(e.key==="Enter"&&e.target.classList&&e.target.classList.contains("loc-row")){ openLocation(e.target.dataset.loc); return; }
     if(e.target.id==="scan-input"&&e.key==="Enter"){
       const v=e.target.value.trim().toLowerCase();
       const u=state.units.find(x=>x.sn.toLowerCase()===v)||state.units.find(x=>x.sn.toLowerCase().includes(v)&&v);
@@ -1532,6 +1564,85 @@
     toast(`Shipped ${done} unit${done===1?"":"s"} from file${plan.notFound.length?` · ${plan.notFound.length} not found`:""}`);
     state.filter={q:"",grade:"",disp:"shipped"};
     go("inventory");
+  }
+
+  /* ---------------- location detail ---------------- */
+  let openLocId=null;
+  const LOC_PAGE=100;
+  let locShown=LOC_PAGE;
+
+  function unitsInLoc(id){
+    return id==="__none__"
+      ? state.units.filter(u=>!u.location)
+      : state.units.filter(u=>u.location===id);
+  }
+  function renderLocUnits(){
+    const box=document.getElementById("loc-units"); if(!box)return;
+    const q=(document.getElementById("loc-q")?document.getElementById("loc-q").value:"").trim().toLowerCase();
+    let list=unitsInLoc(openLocId);
+    if(q) list=list.filter(u=>(u.sn+" "+u.desc+" "+u.sku).toLowerCase().includes(q));
+    if(!list.length){
+      box.innerHTML=`<div class="pick-empty">${q?"No units here match that search.":"No units in this location yet."}</div>`;
+      return;
+    }
+    const shown=list.slice(0,locShown);
+    box.innerHTML=shown.map(u=>`
+      <div class="pick" data-unit="${u.id}" style="cursor:pointer;">
+        <div style="min-width:0;">
+          <span class="sn">${esc(u.sn)}</span>
+          <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.desc||u.sku||"")}</span>
+        </div>
+        <span style="display:flex;align-items:center;gap:6px;flex:none;">${gradeChip(u.grade)}${dispPill(u.disposition)}</span>
+      </div>`).join("")
+      + (list.length>shown.length
+          ? `<button class="btn ghost sm" id="loc-more" style="width:100%;justify-content:center;margin-top:4px;">Show ${Math.min(LOC_PAGE,list.length-shown.length)} more (${list.length-shown.length} left)</button>`
+          : "");
+  }
+  function renderLocActions(){
+    const box=document.getElementById("loc-actions"); if(!box)return;
+    if(openLocId==="__none__"){
+      box.innerHTML=`<div class="muted" style="font-size:12.5px;">These units have no location set. Open a unit to move it somewhere.</div>`;
+      return;
+    }
+    const n=unitsInLoc(openLocId).length;
+    box.innerHTML = n
+      ? `<div class="muted" style="font-size:12.5px;">Move or ship these ${n} unit${n===1?"":"s"} before this location can be deleted.</div>`
+      : `<button class="btn danger sm" data-act="loc-delete">Delete this location</button>
+         <div class="muted" style="font-size:12px;margin-top:8px;">It's empty, so nothing will be lost.</div>`;
+  }
+  function openLocation(id){
+    openLocId=id; locShown=LOC_PAGE;
+    const isNone=id==="__none__";
+    const loc=isNone?null:state.locations.find(l=>l.id===id);
+    if(!isNone&&!loc) return;
+    const list=unitsInLoc(id);
+    document.getElementById("loc-title").textContent=isNone?"Unassigned":loc.name;
+    document.getElementById("loc-sub").textContent=`${list.length} unit${list.length===1?"":"s"}`;
+    const sw=document.getElementById("loc-search-wrap");
+    sw.style.display=list.length>8?"block":"none";
+    const q=document.getElementById("loc-q"); if(q) q.value="";
+    renderLocUnits(); renderLocActions();
+    document.getElementById("loc-modal").classList.add("show");
+  }
+  function closeLocation(){
+    document.getElementById("loc-modal").classList.remove("show");
+    openLocId=null;
+  }
+  async function deleteOpenLocation(){
+    const id=openLocId;
+    if(!id||id==="__none__") return;
+    if(unitsInLoc(id).length){ toast("Move its units first"); return; }
+    const loc=state.locations.find(l=>l.id===id);
+    if(!window.confirm(`Delete the location "${loc?loc.name:""}"? This can't be undone.`)) return;
+    state.locations=state.locations.filter(l=>l.id!==id);
+    persist();
+    if(cloudMode){
+      try{ await cloudDeleteLocation(id); }
+      catch(err){ console.error(err); toast("⚠ Couldn't delete on the server"); }
+    }
+    closeLocation();
+    toast("Location deleted");
+    go("locations");
   }
 
   /* ---------------- catch-up import (bootstrap existing inventory) ---------------- */
