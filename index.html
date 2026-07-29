@@ -119,7 +119,7 @@
   .topbar h1{font-size:21px;}
   .topbar .crumb{font-size:13px;color:var(--muted);}
   .topbar .spacer{flex:1;}
-  .content{padding:26px 30px 60px;max-width:1080px;width:100%;}
+  .content{padding:26px 30px 60px;max-width:min(1440px,100%);width:100%;margin:0 auto;}
 
   /* ---------- generic ---------- */
   .btn{
@@ -157,12 +157,6 @@
     font-size:12px;padding:2px 9px;border-radius:20px;letter-spacing:.02em;
   }
   .grade .dot{width:7px;height:7px;border-radius:50%;}
-  .grade.A{background:var(--g-a-bg);color:var(--g-a);} .grade.A .dot{background:var(--g-a);}
-  .grade.B{background:var(--g-b-bg);color:var(--g-b);} .grade.B .dot{background:var(--g-b);}
-  .grade.C{background:var(--g-c-bg);color:var(--g-c);} .grade.C .dot{background:var(--g-c);}
-  .grade.D{background:var(--g-d-bg);color:var(--g-d);} .grade.D .dot{background:var(--g-d);}
-  .grade.scrap{background:var(--g-scrap-bg);color:var(--g-scrap);} .grade.scrap .dot{background:var(--g-scrap);}
-  .grade.none{background:var(--g-none-bg);color:var(--g-none);border:1px dashed var(--g-none);padding:1px 8px;} .grade.none .dot{display:none;}
 
   .pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;padding:3px 10px;border-radius:6px;background:var(--surface-2);color:var(--muted);border:1px solid var(--line);}
   .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
@@ -257,7 +251,17 @@
   .logbox{padding:18px;}
   .logbox h3{font-size:14.5px;margin-bottom:14px;}
   .grade-pick{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:5px;}
-  .gp{border:1px solid var(--line-2);background:var(--surface);border-radius:20px;padding:5px 13px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;color:var(--muted);}
+  .setup-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:30px;max-width:1100px;}
+  .loc-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:9px;}
+  .loc-cols .loc-row{margin-bottom:0;}
+  .grade-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:9px;flex-wrap:wrap;}
+  .grade-row .cnt{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--muted);}
+  .swatches{display:flex;gap:5px;margin-left:auto;}
+  .sw{width:18px;height:18px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;}
+  .sw.on{border-color:var(--ink);}
+  .sw:hover{transform:scale(1.12);}
+  .gp{border:1px solid var(--line-2);background:var(--surface);border-radius:20px;padding:6px 14px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:13px;color:var(--muted);}
+
   .gp:hover{border-color:var(--muted);}
   .gp.sel{color:#fff;}
   .gp.sel.A{background:var(--g-a);border-color:var(--g-a);}
@@ -362,6 +366,23 @@
   .pw-wrap button{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);font-size:12px;font-weight:500;padding:5px 8px;border-radius:5px;}
   .pw-wrap button:hover{color:var(--ink);background:var(--surface-2);}
 
+  /* large desktops: use the extra width for a third setup column */
+  @media (min-width:1200px){
+    .setup-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:36px;}
+    .setup-grid section:last-child{grid-column:1 / -1;max-width:640px;}
+  }
+  /* tablets and small laptops: stop forcing two columns into too little space */
+  @media (max-width:1100px){
+    .ship-grid,.work-grid{grid-template-columns:1fr;gap:18px;}
+    .detail-grid{grid-template-columns:1fr;gap:18px;}
+    .stat-row{grid-template-columns:repeat(3,1fr);}
+    .content{padding:22px 24px 60px;}
+  }
+  @media (max-width:960px){
+    .sidebar{width:auto;}
+    .app{grid-template-columns:196px 1fr;}
+    .stat-row{grid-template-columns:repeat(2,1fr);}
+  }
   @media (max-width:860px){
     .app{grid-template-columns:1fr;}
     .sidebar{display:none;}
@@ -373,6 +394,10 @@
     .mobile-nav button.active{background:var(--paper);color:var(--graphite);}
     .topbar{padding:14px 18px;}
     .content{padding:18px 18px 70px;}
+    .loc-cols{grid-template-columns:1fr;}
+    .setup-grid{gap:26px;}
+    .grade-row{gap:8px;}
+    .swatches{margin-left:0;width:100%;}
     .stat-row{grid-template-columns:repeat(2,1fr);}
     .detail-grid{grid-template-columns:1fr;}
     .two{grid-template-columns:1fr;}
@@ -453,7 +478,7 @@
       <button class="nav-item" data-view="receive"><span class="ico">↓</span> Receive</button>
       <button class="nav-item" data-view="ship"><span class="ico">↑</span> Ship</button>
       <div class="nav-label" style="margin-top:14px;">Setup</div>
-      <button class="nav-item" data-view="locations"><span class="ico">◫</span> Locations</button>
+      <button class="nav-item" data-view="locations"><span class="ico">◫</span> Setup</button>
     </nav>
     <div class="side-foot"><div id="account-foot"></div></div>
   </aside>
@@ -561,12 +586,38 @@
     return `${mo} ${dt.getDate()} · ${hh}:${mm}`;
   }
   const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  const GRADES=["A","B","C","D","scrap"];
-  const gradeLabel={A:"A · like new",B:"B · good",C:"C · functional",D:"D · faulty",scrap:"scrap",none:"ungraded"};
+  // Grades are defined by the user in Setup — no assumed vocabulary.
+  const GRADE_PALETTE=[
+    {key:"green", fg:"var(--g-a)",    bg:"var(--g-a-bg)"},
+    {key:"amber", fg:"var(--g-b)",    bg:"var(--g-b-bg)"},
+    {key:"orange",fg:"var(--g-c)",    bg:"var(--g-c-bg)"},
+    {key:"red",   fg:"var(--g-d)",    bg:"var(--g-d-bg)"},
+    {key:"blue",  fg:"var(--accent)", bg:"var(--accent-soft)"},
+    {key:"gray",  fg:"var(--g-scrap)",bg:"var(--g-scrap-bg)"},
+  ];
+  function paletteFor(key){ return GRADE_PALETTE.find(c=>c.key===key)||GRADE_PALETTE[5]; }
+  function gradeDef(name){
+    if(!name) return null;
+    return state.grades.find(g=>g.name.toLowerCase()===String(name).toLowerCase())||null;
+  }
   const DISP=["needs-inspection","stock","refurb","scrap","shipped"];
   const dispLabel={"needs-inspection":"needs inspection","stock":"in stock","refurb":"refurb","scrap":"scrap","shipped":"shipped"};
 
-  function gradeChip(g){ g=g||"none"; const cls=g==="none"?"none":g; return `<span class="grade ${cls}"><span class="dot"></span>${g==="none"?"ungraded":g}</span>`; }
+  function gradePicker(id,current){
+    if(!state.grades.length){
+      return `<div class="muted" style="font-size:12.5px;padding:6px 0;">No grades set up yet. <button class="guest" data-act="go-grades" style="font-size:12.5px;padding:0 2px;">Create them in Setup</button> to grade units.</div>`;
+    }
+    return `<div class="grade-pick" id="${id}">${state.grades.map(g=>{
+      const c=paletteFor(g.color); const sel=String(current||"").toLowerCase()===g.name.toLowerCase();
+      return `<button class="gp${sel?" sel":""}" data-grade="${esc(g.name)}" style="${sel?`background:${c.fg};border-color:${c.fg};color:#fff;`:`color:${c.fg};border-color:${c.bg};`}">${esc(g.name)}</button>`;
+    }).join("")}${current?`<button class="gp" data-grade="" style="color:var(--muted);">clear</button>`:""}</div>`;
+  }
+  function gradeChip(g){
+    if(!g||g==="none") return "";                      // no grade assigned -> show nothing
+    const def=gradeDef(g);
+    const c=paletteFor(def?def.color:"gray");
+    return `<span class="grade" style="background:${c.bg};color:${c.fg};"><span class="dot" style="background:${c.fg};"></span>${esc(g)}</span>`;
+  }
   function dispPill(d){ return `<span class="pill disp-${d}"><span class="dot"></span>${dispLabel[d]||d}</span>`; }
   // A unit should always have at least one event, but a partial save can leave none —
   // never let that crash a whole view.
@@ -576,7 +627,7 @@
   function locName(id){ if(!id) return "Unassigned"; const l=state.locations.find(x=>x.id===id); return l?l.name:"Unassigned"; }
 
   /* ---------------- state ---------------- */
-  let state={locations:[],units:[],view:"dashboard",unitId:null,filter:{q:"",grade:"",disp:""},pick:[],session:null};
+  let state={locations:[],grades:[],units:[],view:"dashboard",unitId:null,filter:{q:"",grade:"",disp:""},pick:[],session:null};
 
   /* ---------------- toast ---------------- */
   let toastT=null;
@@ -592,7 +643,7 @@
     note:e.note||"", grade:e.grade||undefined, disposition:e.disposition||undefined, location:e.location_id||"" }; }
   function mapDbUnit(u){
     const events=(u.unit_events||[]).map(mapDbEvent).sort((a,b)=>a.ts-b.ts);
-    return { id:u.id, sn:u.sn, sku:u.sku||"", desc:u.description||"", grade:u.grade||"none",
+    return { id:u.id, sn:u.sn, sku:u.sku||"", desc:u.description||"", grade:u.grade||"",
       disposition:u.disposition, location:u.location_id||"", createdAt:new Date(u.created_at).getTime(), events };
   }
   const PAGE = 1000; // PostgREST's default max rows per request — page past it, don't hit it
@@ -608,12 +659,27 @@
     return all;
   }
   async function cloudLoadAll(){
-    const [locs, units] = await Promise.all([
+    const [locs, grades, units] = await Promise.all([
       fetchAllPages("locations","*","created_at",{}),
+      fetchAllPages("grades","*","sort_order",{}),
       fetchAllPages("units","*, unit_events(*)","created_at",{ascending:false}),
     ]);
     state.locations=locs.map(l=>({id:l.id,name:l.name}));
+    state.grades=grades.map(g=>({id:g.id,name:g.name,color:g.color,sort:g.sort_order}));
     state.units=units.map(mapDbUnit);
+  }
+  async function cloudAddGrade(name,color,sort){
+    const {data,error}=await sb.from("grades").insert({name,color,sort_order:sort}).select().single();
+    if(error) throw error;
+    return {id:data.id,name:data.name,color:data.color,sort:data.sort_order};
+  }
+  async function cloudDeleteGrade(id){
+    const {error}=await sb.from("grades").delete().eq("id",id);
+    if(error) throw error;
+  }
+  async function cloudRenameGrade(id,name,color){
+    const {error}=await sb.from("grades").update({name,color}).eq("id",id);
+    if(error) throw error;
   }
   async function cloudAddLocation(name){
     const {data,error}=await sb.from("locations").insert({name}).select().single();
@@ -625,7 +691,7 @@
     if(error) throw error;
   }
   async function cloudReceiveUnits(sns,common){
-    const rows=sns.map(sn=>({sn,sku:common.sku||"",description:common.desc||"",grade:"none",
+    const rows=sns.map(sn=>({sn,sku:common.sku||"",description:common.desc||"",grade:null,
       disposition:"needs-inspection",location_id:common.location||null}));
     const {data:created,error}=await sb.from("units").insert(rows).select();
     if(error) throw error;
@@ -634,7 +700,7 @@
     const {error:ee}=await sb.from("unit_events").insert(events);
     if(ee) throw ee;
     const nowTs=now();
-    return created.map(u=>({ id:u.id, sn:u.sn, sku:u.sku||"", desc:u.description||"", grade:"none",
+    return created.map(u=>({ id:u.id, sn:u.sn, sku:u.sku||"", desc:u.description||"", grade:"",
       disposition:"needs-inspection", location:u.location_id||"", createdAt:nowTs,
       events:[{ts:nowTs,type:"received",by:"You",note:common.ref?`Received · ${common.ref}`:"Received",
                disposition:"needs-inspection",location:common.location||""}] }));
@@ -656,7 +722,17 @@
     if(error) throw error;
   }
   // Uploads locations+units (with full event history) into the signed-in account.
-  async function cloudBulkUpload(locations,units){
+  async function cloudBulkUpload(locations,units,grades){
+    if(grades&&grades.length){
+      const existing=new Set(state.grades.map(g=>g.name.toLowerCase()));
+      const fresh=grades.filter(g=>!existing.has(g.name.toLowerCase()));
+      if(fresh.length){
+        const {data,error}=await sb.from("grades")
+          .insert(fresh.map((g,i)=>({name:g.name,color:g.color||"gray",sort_order:i}))).select();
+        if(error) throw error;
+        (data||[]).forEach(g=>state.grades.push({id:g.id,name:g.name,color:g.color,sort:g.sort_order}));
+      }
+    }
     const locMap={};
     if(locations&&locations.length){
       const {data:newLocs,error}=await sb.from("locations").insert(locations.map(l=>({name:l.name}))).select();
@@ -664,7 +740,7 @@
       locations.forEach((old,i)=>{locMap[old.id]=newLocs[i].id;});
     }
     if(!units||!units.length) return;
-    const rows=units.map(u=>({sn:u.sn,sku:u.sku||"",description:u.desc||"",grade:u.grade||"none",
+    const rows=units.map(u=>({sn:u.sn,sku:u.sku||"",description:u.desc||"",grade:u.grade||null,
       disposition:u.disposition,location_id:locMap[u.location]||null,created_at:new Date(u.createdAt).toISOString()}));
     const {data:newUnits,error:ue}=await sb.from("units").insert(rows).select();
     if(ue) throw ue;
@@ -684,7 +760,7 @@
     const u=state.units.find(x=>x.id===unitId); if(!u) return;
     let type=p.type;
     if(!type){
-      if(p.grade&&u.grade==="none") type="inspected";
+      if(p.grade&&!u.grade) type="inspected";
       else if(p.grade) type="graded";
       else if(p.location&&!p.note) type="moved";
       else type="note";
@@ -706,7 +782,7 @@
   function receiveUnits(sns,common){
     const created=[];
     sns.forEach(sn=>{
-      const u={id:uid(),sn,sku:common.sku||"",desc:common.desc||"",grade:"none",disposition:"needs-inspection",
+      const u={id:uid(),sn,sku:common.sku||"",desc:common.desc||"",grade:"",disposition:"needs-inspection",
         location:common.location,createdAt:now(),
         events:[{ts:now(),type:"received",by:"You",note:common.ref?`Received · ${common.ref}`:"Received",location:common.location,disposition:"needs-inspection"}]};
       state.units.push(u); created.push(u);
@@ -725,7 +801,7 @@
   }
 
   /* ---------------- views ---------------- */
-  const titles={dashboard:"Dashboard",inventory:"Inventory",audit:"Audit",receive:"Receive",ship:"Ship",locations:"Locations",unit:"Unit record"};
+  const titles={dashboard:"Dashboard",inventory:"Inventory",audit:"Audit",receive:"Receive",ship:"Ship",locations:"Setup",unit:"Unit record"};
 
   function go(view,unitId){
     state.view=view; if(unitId!==undefined) state.unitId=unitId;
@@ -799,10 +875,13 @@
     const f=state.filter;
     let list=state.units.slice();
     if(f.q){const q=f.q.toLowerCase();list=list.filter(u=>(u.sn+" "+u.desc+" "+u.sku).toLowerCase().includes(q));}
-    if(f.grade)list=list.filter(u=>u.grade===f.grade);
+    if(f.grade==="__ungraded__")list=list.filter(u=>!u.grade);
+    else if(f.grade)list=list.filter(u=>String(u.grade).toLowerCase()===f.grade.toLowerCase());
     if(f.disp)list=list.filter(u=>u.disposition===f.disp);
     list.sort((a,b)=>b.createdAt-a.createdAt);
-    const gradeOpts=`<option value="">All grades</option>`+["A","B","C","D","scrap","none"].map(g=>`<option value="${g}" ${f.grade===g?"selected":""}>${g==="none"?"ungraded":"Grade "+g}</option>`).join("");
+    const gradeOpts=`<option value="">All grades</option>`
+      +state.grades.map(g=>`<option value="${esc(g.name)}" ${f.grade===g.name?"selected":""}>${esc(g.name)}</option>`).join("")
+      +`<option value="__ungraded__" ${f.grade==="__ungraded__"?"selected":""}>Ungraded</option>`;
     const dispOpts=`<option value="">All status</option>`+DISP.map(d=>`<option value="${d}" ${f.disp===d?"selected":""}>${dispLabel[d]}</option>`).join("");
     const rows=list.map(u=>{
       const flagged=u.grade==="D"||u.grade==="scrap"||u.disposition==="needs-inspection";
@@ -873,8 +952,8 @@
         </div>
         <div class="card logbox">
           <h3>Log an inspection entry</h3>
-          <div class="grade-pick" id="u-grade">
-            ${GRADES.map(g=>`<button class="gp ${g} ${u.grade===g?"sel":""}" data-grade="${g}">${g}</button>`).join("")}
+          <div id="u-grade">
+            ${gradePicker("u-grade-inner",u.grade)}
           </div>
           <div class="muted" style="font-size:12px;margin-bottom:14px;">Tap to set the grade for this entry.</div>
           <label class="field"><span>Note</span>
@@ -1049,7 +1128,7 @@
       <div style="margin-top:12px;">${recent}</div>
       <div class="quick-grade">
         <div class="muted" style="font-size:12px;margin-bottom:7px;">Set grade</div>
-        <div class="grade-pick" id="a-grade">${GRADES.map(g=>`<button class="gp ${g} ${u.grade===g?"sel":""}" data-grade="${g}">${g}</button>`).join("")}</div>
+        <div id="a-grade">${gradePicker("a-grade-inner",u.grade)}</div>
       </div>
       <label class="field" style="margin-top:8px;"><span>Add a dated note</span>
         <input type="text" id="a-note" placeholder="What's wrong with this one?"></label>
@@ -1070,38 +1149,69 @@
     const unassignedRow=unassigned?`<div class="loc-row" data-loc="__none__" tabindex="0" role="button">
         <div class="nm" style="color:var(--muted);">◫ Unassigned <span class="cnt">${unassigned} unit${unassigned===1?"":"s"}</span></div>
         <span class="loc-go">›</span></div>`:"";
-    return `<div style="max-width:560px;">
-      ${rows}${unassignedRow}
-      ${state.locations.length?"":'<div class="pick-empty" style="margin-bottom:9px;">No locations yet.</div>'}
-      <div style="display:flex;gap:9px;margin-top:14px;">
-        <input type="text" id="loc-new" placeholder="New location name" style="flex:1;">
-        <button class="btn primary" id="loc-add">Add</button>
-      </div>
-      <div class="muted" style="font-size:12.5px;margin-top:12px;">Tap a location to see what's in it. Name them the way your floor already does.</div>
 
-      <div class="card" style="padding:18px;margin-top:26px;">
-        <h3 style="font-size:14.5px;margin-bottom:6px;">Backup</h3>
-        <p class="muted" style="font-size:13px;margin:0;">${cloudMode?"Synced to your account. A file copy is still worth keeping.":"Data lives only in this browser. Download a backup to keep or move it."}</p>
-        <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;">
-          <button class="btn" data-act="export">⤓ Download backup</button>
-          <button class="btn ghost" data-act="import">Restore from file…</button>
-        </div>
-        <p class="muted" style="font-size:12px;margin:10px 0 0;">Restores back into ServiceTag. Not readable by other systems.</p>
-        <input type="file" id="import-file" accept="application/json,.json" style="display:none;">
+    const gradeRows=state.grades.length
+      ? state.grades.map(g=>{
+          const c=paletteFor(g.color);
+          const n=state.units.filter(u=>String(u.grade||"").toLowerCase()===g.name.toLowerCase()).length;
+          return `<div class="grade-row">
+            <span class="grade" style="background:${c.bg};color:${c.fg};"><span class="dot" style="background:${c.fg};"></span>${esc(g.name)}</span>
+            <span class="cnt">${n} unit${n===1?"":"s"}</span>
+            <span class="swatches" data-grade-id="${g.id}">${GRADE_PALETTE.map(p=>
+              `<button class="sw${p.key===g.color?" on":""}" data-swatch="${p.key}" title="${p.key}" style="background:${p.fg};"></button>`).join("")}</span>
+            <button class="btn ghost sm" data-del-grade="${g.id}">remove</button>
+          </div>`;
+        }).join("")
+      : `<div class="pick-empty" style="margin-bottom:9px;">No grades yet. Add the condition labels your team uses.</div>`;
 
-        <hr class="hr">
-        <h3 style="font-size:14.5px;margin-bottom:6px;">Export to another system</h3>
-        <p class="muted" style="font-size:13px;margin:0;">Every unit and its full history as a normalized spreadsheet, ready to load into a WMS, ERP, or database.</p>
-        <div style="margin-top:14px;">
-          <button class="btn" data-act="migrate">⤓ Export for migration</button>
+    return `<div class="setup-grid">
+      <section>
+        <div class="section-h"><h2>Locations</h2><span class="line"></span></div>
+        <div class="loc-cols">${rows}${unassignedRow}</div>
+        ${state.locations.length?"":'<div class="pick-empty" style="margin-bottom:9px;">No locations yet.</div>'}
+        <div style="display:flex;gap:9px;margin-top:14px;">
+          <input type="text" id="loc-new" placeholder="New location name" style="flex:1;">
+          <button class="btn primary" id="loc-add">Add</button>
         </div>
-        <p class="muted" style="font-size:12px;margin:10px 0 0;">Includes a README sheet defining every field.</p>
-      </div>
+        <div class="muted" style="font-size:12.5px;margin-top:10px;">Tap a location to see what's in it.</div>
+      </section>
+
+      <section>
+        <div class="section-h"><h2>Grades</h2><span class="line"></span></div>
+        ${gradeRows}
+        <div style="display:flex;gap:9px;margin-top:14px;">
+          <input type="text" id="grade-new" placeholder="New grade name" style="flex:1;">
+          <button class="btn primary" id="grade-add">Add</button>
+        </div>
+        <div class="muted" style="font-size:12.5px;margin-top:10px;">Use whatever condition labels your team already says out loud. Units stay ungraded until you assign one.</div>
+      </section>
+
+      <section>
+        <div class="section-h"><h2>Data</h2><span class="line"></span></div>
+        <div class="card" style="padding:18px;">
+          <h3 style="font-size:14.5px;margin-bottom:6px;">Backup</h3>
+          <p class="muted" style="font-size:13px;margin:0;">${cloudMode?"Synced to your account. A file copy is still worth keeping.":"Data lives only in this browser. Download a backup to keep or move it."}</p>
+          <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;">
+            <button class="btn" data-act="export">⤓ Download backup</button>
+            <button class="btn ghost" data-act="import">Restore from file…</button>
+          </div>
+          <p class="muted" style="font-size:12px;margin:10px 0 0;">Restores back into ServiceTag. Not readable by other systems.</p>
+          <input type="file" id="import-file" accept="application/json,.json" style="display:none;">
+
+          <hr class="hr">
+          <h3 style="font-size:14.5px;margin-bottom:6px;">Export to another system</h3>
+          <p class="muted" style="font-size:13px;margin:0;">Every unit and its full history as a normalized spreadsheet, ready to load into a WMS, ERP, or database.</p>
+          <div style="margin-top:14px;">
+            <button class="btn" data-act="migrate">⤓ Export for migration</button>
+          </div>
+          <p class="muted" style="font-size:12px;margin:10px 0 0;">Includes a README sheet defining every field.</p>
+        </div>
+      </section>
     </div>`;
   };
 
   function renderMobileNav(){
-    const items=[["dashboard","Dashboard"],["inventory","Inventory"],["audit","Audit"],["receive","Receive"],["ship","Ship"],["locations","Locations"]];
+    const items=[["dashboard","Dashboard"],["inventory","Inventory"],["audit","Audit"],["receive","Receive"],["ship","Ship"],["locations","Setup"]];
     document.getElementById("mnav").innerHTML=items.map(([v,l])=>`<button data-view="${v}" class="${state.view===v||(state.view==="unit"&&v==="inventory")?"active":""}">${l}</button>`).join("")+`<button data-act="signout" style="margin-left:auto;color:#A7A49B;">Sign out</button>`;
   }
 
@@ -1123,11 +1233,21 @@
 
     const g=e.target.closest("[data-grade]");
     if(g){
-      const parent=g.parentElement;
-      parent.querySelectorAll(".gp").forEach(x=>x.classList.remove("sel"));
+      const picker=g.closest(".grade-pick");
+      if(picker) picker.querySelectorAll(".gp").forEach(x=>{
+        x.classList.remove("sel");
+        const def=gradeDef(x.dataset.grade); const c=paletteFor(def?def.color:"gray");
+        x.setAttribute("style", x.dataset.grade ? `color:${c.fg};border-color:${c.bg};` : "color:var(--muted);");
+      });
       g.classList.add("sel");
-      if(parent.id==="a-grade") auditGrade=g.dataset.grade;
-      if(parent.id==="u-grade") uGrade=g.dataset.grade;
+      const gd=gradeDef(g.dataset.grade);
+      if(g.dataset.grade){
+        const c=paletteFor(gd?gd.color:"gray");
+        g.setAttribute("style",`background:${c.fg};border-color:${c.fg};color:#fff;`);
+      }
+      // the picker is wrapped, so walk up to whichever slot it belongs to
+      if(g.closest("#a-grade")) auditGrade=g.dataset.grade;
+      if(g.closest("#u-grade")) uGrade=g.dataset.grade;
       return;
     }
     if(e.target.id==="u-log"){
@@ -1136,10 +1256,10 @@
       const loc=document.getElementById("u-loc").value;
       const u=state.units.find(x=>x.id===state.unitId);
       const payload={note};
-      if(uGrade&&uGrade!==u.grade)payload.grade=uGrade;
+      if(uGrade!==null&&uGrade!==u.grade)payload.grade=uGrade;
       if(disp!==u.disposition)payload.disposition=disp;
       if(loc!==u.location)payload.location=loc;
-      if(!payload.note&&!payload.grade&&!payload.disposition&&!payload.location){toast("Nothing to log yet");return;}
+      if(!payload.note&&payload.grade===undefined&&!payload.disposition&&!payload.location){toast("Nothing to log yet");return;}
       addEvent(state.unitId,payload); uGrade=null; toast("Entry logged"); go("unit");
       return;
     }
@@ -1148,8 +1268,8 @@
       const note=document.getElementById("a-note").value.trim();
       const u=state.units.find(x=>x.id===id);
       const payload={note};
-      if(auditGrade&&auditGrade!==u.grade)payload.grade=auditGrade;
-      if(!payload.note&&!payload.grade){toast("Add a note or grade first");return;}
+      if(auditGrade!==null&&auditGrade!==u.grade)payload.grade=auditGrade;
+      if(!payload.note&&payload.grade===undefined){toast("Add a note or grade first");return;}
       addEvent(id,payload); auditGrade=null; toast("Stamped · "+u.sn);
       renderAuditResult(state.units.find(x=>x.id===id));
       refreshAuditQueue();
@@ -1209,6 +1329,12 @@
       return;
     }
     if(e.target.id==="loc-add"){ addLoc(); return; }
+    if(e.target.id==="grade-add"){ addGrade(); return; }
+    const delG=e.target.closest("[data-del-grade]");
+    if(delG){ removeGrade(delG.dataset.delGrade); return; }
+    const sw=e.target.closest("[data-swatch]");
+    if(sw){ setGradeColor(sw.closest("[data-grade-id]").dataset.gradeId, sw.dataset.swatch); return; }
+    if(e.target.closest("[data-act='go-grades']")){ go("locations"); return; }
     if(e.target.closest("[data-act='export']")){ exportData(); return; }
     if(e.target.closest("[data-act='migrate']")){ exportForMigration(); return; }
     if(e.target.closest("[data-act='import']")){ const f=document.getElementById("import-file"); if(f) f.click(); return; }
@@ -1258,6 +1384,7 @@
       if(u){auditGrade=null;renderAuditResult(u);} else {document.getElementById("audit-result").innerHTML=`<div class="card audit-card muted">No unit matches “${esc(e.target.value)}”. Check the serial or receive it first.</div>`;}
     }
     if(e.target.id==="loc-new"&&e.key==="Enter")addLoc();
+    if(e.target.id==="grade-new"&&e.key==="Enter")addGrade();
     if(e.target.id==="rcv-sns"&&e.target.tagName==="INPUT"&&e.key==="Enter")doReceive();
     if(e.target.id==="ship-q"&&e.key==="Enter"){
       const res=shipMatches(e.target.value);
@@ -1269,7 +1396,8 @@
     // re-render only table area to preserve search focus
     const f=state.filter; let list=state.units.slice();
     if(f.q){const q=f.q.toLowerCase();list=list.filter(u=>(u.sn+" "+u.desc+" "+u.sku).toLowerCase().includes(q));}
-    if(f.grade)list=list.filter(u=>u.grade===f.grade);
+    if(f.grade==="__ungraded__")list=list.filter(u=>!u.grade);
+    else if(f.grade)list=list.filter(u=>String(u.grade).toLowerCase()===f.grade.toLowerCase());
     if(f.disp)list=list.filter(u=>u.disposition===f.disp);
     list.sort((a,b)=>b.createdAt-a.createdAt);
     const wrap=document.getElementById("content");
@@ -1348,6 +1476,38 @@
     state.pick=[]; toast(`Shipped ${n} unit${n>1?"s":""}`); go("inventory");
   }
 
+  async function addGrade(){
+    const i=document.getElementById("grade-new"); const v=(i.value||"").trim();
+    if(!v) return;
+    if(state.grades.some(g=>g.name.toLowerCase()===v.toLowerCase())){ toast("That grade already exists"); return; }
+    const color=GRADE_PALETTE[state.grades.length % GRADE_PALETTE.length].key;
+    const sort=state.grades.length;
+    if(cloudMode){
+      try{ state.grades.push(await cloudAddGrade(v,color,sort)); }
+      catch(err){ console.error(err); toast("⚠ Couldn't save the grade"); return; }
+    }else{
+      state.grades.push({id:uid(),name:v,color,sort}); persist();
+    }
+    go("locations");
+  }
+  async function removeGrade(id){
+    const g=state.grades.find(x=>x.id===id); if(!g) return;
+    const inUse=state.units.filter(u=>String(u.grade||"").toLowerCase()===g.name.toLowerCase()).length;
+    const msg=inUse
+      ? `Remove the grade "${g.name}"? ${inUse} unit${inUse===1?"":"s"} currently carry it — they'll become ungraded, but their history entries stay intact.`
+      : `Remove the grade "${g.name}"?`;
+    if(!window.confirm(msg)) return;
+    state.grades=state.grades.filter(x=>x.id!==id);
+    persist();
+    if(cloudMode){ try{ await cloudDeleteGrade(id); }catch(err){ console.error(err); toast("⚠ Couldn't remove on the server"); } }
+    go("locations");
+  }
+  async function setGradeColor(id,color){
+    const g=state.grades.find(x=>x.id===id); if(!g||g.color===color) return;
+    g.color=color; persist();
+    if(cloudMode){ try{ await cloudRenameGrade(id,g.name,color); }catch(err){ console.error(err); } }
+    go("locations");
+  }
   async function addLoc(){
     const i=document.getElementById("loc-new"); const v=i.value.trim();
     if(!v)return;
@@ -1793,12 +1953,22 @@
       <label class="field"><span>Notes column</span><select id="cu-map-note">${opts(map.note,true)}</select></label>`;
   }
   // Lenient text -> our fixed vocab. Unrecognized text is preserved in the note, not lost.
+  // Match sheet text against the user's own grade names. No assumed vocabulary,
+  // and anything unrecognised is preserved in the note rather than guessed at.
   function normGrade(v){
-    v=String(v||"").trim().toUpperCase();
-    if(["A","B","C","D"].includes(v)) return v;
-    if(/^SCRAP|DEAD|FAIL/.test(v)) return "scrap";
-    if(/LIKE\s*NEW|SEALED|GRADE\s*A/.test(v)) return "A";
-    return "";
+    const t=String(v||"").trim();
+    if(!t) return "";
+    const exact=state.grades.find(g=>g.name.toLowerCase()===t.toLowerCase());
+    if(exact) return exact.name;
+    // Only attempt a fuzzy match on reasonably long strings, and only as a prefix —
+    // otherwise a one-letter value like "A" would match inside a name like "Scrap".
+    const l=t.toLowerCase();
+    if(l.length<3) return "";
+    const loose=state.grades.find(g=>{
+      const n=g.name.toLowerCase();
+      return n.length>=3 && (l.startsWith(n)||n.startsWith(l));
+    });
+    return loose?loose.name:"";
   }
   function normDisp(v){
     v=String(v||"").trim().toLowerCase();
@@ -1850,7 +2020,7 @@
     const sample=plan.items.slice(0,8).map(it=>`
       <div class="pick"><div style="min-width:0;"><span class="sn">${esc(it.sn)}</span>
         <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(it.desc||it.sku||"")}${it.locName?" · "+esc(it.locName):""}</span></div>
-        ${gradeChip(it.grade||"none")}<span class="pill disp-${it.disposition}" style="flex:none;">${esc(dispLabel[it.disposition])}</span></div>`).join("");
+        ${gradeChip(it.grade)}<span class="pill disp-${it.disposition}" style="flex:none;">${esc(dispLabel[it.disposition])}</span></div>`).join("");
     const locNote=plan.newLocs.size?`<div class="muted" style="font-size:12.5px;margin:8px 0;">Will create ${plan.newLocs.size} new location${plan.newLocs.size>1?"s":""}: ${esc([...plan.newLocs].join(", "))}</div>`:"";
     box.innerHTML=`
       <div class="muted" style="font-size:13px;margin:4px 0 10px;">
@@ -2111,7 +2281,7 @@
     // Shipped — the sheet that reconciles against the daily shipping record
     const shipped=rep.shipped.map(r=>({
       "Date":dtstr(r.ts),"Serial":r.sn,"Part / SKU":r.sku,"Description":r.desc,
-      "Grade":r.grade==="none"?"":r.grade,"Destination":r.dest,"Reference #":r.ref,"Tracking #":r.tracking,
+      "Grade":r.grade||"","Destination":r.dest,"Reference #":r.ref,"Tracking #":r.tracking,
     }));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(shipped.length?shipped:[{"Date":"","Serial":"","Part / SKU":"","Description":"","Grade":"","Destination":"","Reference #":"","Tracking #":""}]),"Shipped");
 
@@ -2128,7 +2298,7 @@
     // Full current snapshot, so the file stands alone as a record
     const snap=state.units.map(u=>({
       "Serial":u.sn,"Part / SKU":u.sku||"","Description":u.desc||"",
-      "Grade":u.grade==="none"?"":u.grade,"Status":dispLabel[u.disposition]||u.disposition,
+      "Grade":u.grade||"","Status":dispLabel[u.disposition]||u.disposition,
       "Location":locName(u.location),"Received":dstr(u.createdAt),
       "Last activity":dtstr(lastTs(u)),"Entries":u.events.length,
     }));
@@ -2188,7 +2358,7 @@
       serial_number:u.sn,
       item_number:u.sku||"",
       description:u.desc||"",
-      condition_grade:u.grade==="none"?"":u.grade,
+      condition_grade:u.grade||"",
       status:u.disposition,
       location:locName(u.location)==="Unassigned"?"":locName(u.location),
       quantity:1,
@@ -2231,7 +2401,7 @@
   }
 
   function exportData(){
-    const payload={app:"servicetag",version:1,exportedAt:new Date().toISOString(),locations:state.locations,units:state.units};
+    const payload={app:"servicetag",version:2,exportedAt:new Date().toISOString(),grades:state.grades,locations:state.locations,units:state.units};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -2249,14 +2419,14 @@
         if(cloudMode){
           if(!window.confirm("Add the "+d.units.length+" units in this backup to your account?")) return;
           try{
-            await cloudBulkUpload(d.locations,d.units);
+            await cloudBulkUpload(d.locations,d.units,d.grades||[]);
             await cloudLoadAll();
             toast("Backup added to your account · "+d.units.length+" units"); go("dashboard");
           }catch(err){ syncFail(err); }
           return;
         }
         if(state.units.length && !window.confirm("Replace everything currently in the app with this backup? Download a backup first if you're unsure.")) return;
-        state.locations=d.locations; state.units=d.units; state.unitId=null; state.pick=[];
+        state.locations=d.locations; state.units=d.units; if(Array.isArray(d.grades)) state.grades=d.grades; state.unitId=null; state.pick=[];
         persist(); toast("Backup restored · "+d.units.length+" units"); go("dashboard");
       }catch(err){ toast("Couldn't read that file — is it a ServiceTag backup?"); }
     };
@@ -2391,7 +2561,7 @@
         if(local&&local.units&&local.units.length){
           const n=local.units.length;
           if(window.confirm(`Move the ${n} unit${n>1?"s":""} saved on this device into your account?`)){
-            await cloudBulkUpload(local.locations||[],local.units);
+            await cloudBulkUpload(local.locations||[],local.units,local.grades||[]);
             await cloudLoadAll(); go("dashboard");
             toast(`Moved ${n} unit${n>1?"s":""} into your account`);
           }
