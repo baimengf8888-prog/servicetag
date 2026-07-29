@@ -639,7 +639,7 @@
   }
 
   /* ---------------- cloud layer (only used when signed in via Supabase) ---------------- */
-  function mapDbEvent(e){ return { ts:new Date(e.created_at).getTime(), type:e.event_type, by:e.created_by||"You",
+  function mapDbEvent(e){ return { id:e.id, ts:new Date(e.created_at).getTime(), type:e.event_type, by:e.created_by||"You",
     note:e.note||"", grade:e.grade||undefined, disposition:e.disposition||undefined, location:e.location_id||"" }; }
   function mapDbUnit(u){
     const events=(u.unit_events||[]).map(mapDbEvent).sort((a,b)=>a.ts-b.ts);
@@ -1404,7 +1404,7 @@
     if(/^rep-(from|to)$/.test(e.target.id||"")){ renderReportSummary(); }
     if(e.target.id==="loc-q"){ locShown=LOC_PAGE; renderLocUnits(); }
     if(/^sf-map-/.test(e.target.id||"")){ replanShipFile(); }
-    if(/^cu-map-/.test(e.target.id||"")){ replanCatchup(); }
+    if(/^cu-map-/.test(e.target.id||"")||e.target.id==="cu-update"){ replanCatchup(); }
   });
   document.addEventListener("keydown",e=>{
     if((e.target.id==="li-email"||e.target.id==="li-pass")&&e.key==="Enter"){ emailAuth(); return; }
@@ -1668,7 +1668,7 @@
       if(!loaded) throw new Error("Couldn't load the spreadsheet reader. Check your connection and reload, or save the file as .csv and upload that.");
     }
     const buf=await file.arrayBuffer();
-    const wb=window.XLSX.read(buf,{type:"array"});
+    const wb=window.XLSX.read(buf,{type:"array",cellDates:true});
     const ws=wb.Sheets[wb.SheetNames[0]];
     return window.XLSX.utils.sheet_to_json(ws,{defval:""});
   }
@@ -1953,6 +1953,32 @@
   /* ---------------- catch-up import (bootstrap existing inventory) ---------------- */
   let pendingCatchup=null;
 
+  // Sheet dates arrive as Date objects (real Excel dates), Excel serial numbers,
+  // or free text. Returns a timestamp, or null when nothing usable is present.
+  function parseSheetDate(v){
+    if(v===null||v===undefined||v==="") return null;
+    if(v instanceof Date) return isNaN(v.getTime())?null:v.getTime();
+    if(typeof v==="number"){
+      // Excel serial: days since 1899-12-30. Bounds keep it from eating quantities.
+      if(v>=20000&&v<=80000) return Date.UTC(1899,11,30)+Math.round(v)*86400000;
+      return null;
+    }
+    const t=String(v).trim();
+    if(!t) return null;
+    let m=t.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);          // 2026-07-15
+    if(m) return new Date(+m[1],+m[2]-1,+m[3]).getTime();
+    m=t.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);            // 7/15/2026 or 15/7/2026
+    if(m){
+      let a=+m[1], b=+m[2], y=+m[3];
+      if(y<100) y+=2000;
+      // if the first number can't be a month it must be the day
+      const mo = a>12 ? b : a, d = a>12 ? a : b;
+      const dt=new Date(y,mo-1,d);
+      return isNaN(dt.getTime())?null:dt.getTime();
+    }
+    const p=Date.parse(t);
+    return isNaN(p)?null:p;
+  }
   function detectCatchupColumns(headers){
     return {
       sn:   guessCol(headers,[/^s\/?n\.?$/i,/serial/i,/\bsn\b/i]),
@@ -1962,12 +1988,16 @@
       disp: guessCol(headers,[/status/i,/disposition/i,/state/i]),
       loc:  guessCol(headers,[/location/i,/\bbin\b/i,/shelf/i,/warehouse/i,/site/i]),
       note: guessCol(headers,[/note/i,/comment/i,/remark/i]),
+      inDate:  guessCol(headers,[/(receiv|inbound|intake|arriv)\w*\s*date/i,/date\s*\w*\s*(receiv|inbound|arriv)/i,/\bin\s*date\b/i,/rma\s*date/i,/^\s*date\s*$/i]),
+      outDate: guessCol(headers,[/(ship|outbound|dispatch|sent)\w*\s*date/i,/date\s*\w*\s*(ship|outbound|sent)/i,/\bout\s*date\b/i]),
     };
   }
   function readCatchupMap(){
     const g=id=>{const el=document.getElementById(id);return el?el.value:"";};
     return {sn:g("cu-map-sn"),sku:g("cu-map-sku"),desc:g("cu-map-desc"),grade:g("cu-map-grade"),
-      disp:g("cu-map-disp"),loc:g("cu-map-loc"),note:g("cu-map-note")};
+      disp:g("cu-map-disp"),loc:g("cu-map-loc"),note:g("cu-map-note"),
+      inDate:g("cu-map-indate"),outDate:g("cu-map-outdate"),
+      updateExisting:!!(document.getElementById("cu-update")&&document.getElementById("cu-update").checked)};
   }
   function renderCatchupMapping(headers,map){
     const box=document.getElementById("cu-mapping"); if(!box)return;
@@ -1987,7 +2017,16 @@
         <label class="field"><span>Grade column <span class="muted">(A/B/C/D/scrap)</span></span><select id="cu-map-grade">${opts(map.grade,true)}</select></label>
         <label class="field"><span>Status column</span><select id="cu-map-disp">${opts(map.disp,true)}</select></label>
       </div>
-      <label class="field"><span>Notes column</span><select id="cu-map-note">${opts(map.note,true)}</select></label>`;
+      <div class="two">
+        <label class="field"><span>Inbound / received date</span><select id="cu-map-indate">${opts(map.inDate,true)}</select></label>
+        <label class="field"><span>Outbound / shipped date</span><select id="cu-map-outdate">${opts(map.outDate,true)}</select></label>
+      </div>
+      <label class="field"><span>Notes column</span><select id="cu-map-note">${opts(map.note,true)}</select></label>
+      <label style="display:flex;align-items:flex-start;gap:9px;font-size:13px;margin:4px 0 2px;cursor:pointer;">
+        <input type="checkbox" id="cu-update" style="width:auto;margin-top:2px;">
+        <span>Also correct dates on serials already in the app<br>
+          <span class="muted" style="font-size:12px;">Off by default. Existing units are left untouched unless you tick this.</span></span>
+      </label>`;
   }
   // Lenient text -> our fixed vocab. Unrecognized text is preserved in the note, not lost.
   // Match sheet text against the user's own grade names. No assumed vocabulary,
@@ -2019,10 +2058,12 @@
   }
 
   function buildCatchupPlan(rows,map){
-    const plan={items:[],skipped:0,noSn:0,dups:0,newLocs:new Set()};
+    const plan={items:[],updates:[],skipped:0,noSn:0,dups:0,newLocs:new Set(),
+                datesFound:0,datesMissing:0,outDates:0,badDates:0};
     if(!map.sn) return plan;
     const seen=new Set();
-    const existing=new Set(state.units.map(u=>u.sn.toLowerCase()));
+    const bySn={};
+    state.units.forEach(u=>{ bySn[u.sn.toLowerCase()]=u; });
     rows.forEach(row=>{
       const sns=splitSns(rmaCol(row,map.sn));
       if(!sns.length){ plan.noSn++; return; }
@@ -2032,16 +2073,38 @@
       const rawDisp=map.disp?rmaCol(row,map.disp):"";
       const rawNote=map.note?rmaCol(row,map.note):"";
       const locName=map.loc?rmaCol(row,map.loc):"";
+      // raw cell values (not stringified) so real Excel dates survive
+      const rawIn = map.inDate ? row[map.inDate] : null;
+      const rawOut= map.outDate ? row[map.outDate] : null;
+      const inTs  = parseSheetDate(rawIn);
+      const outTs = parseSheetDate(rawOut);
+      if(map.inDate){
+        if(inTs) plan.datesFound++;
+        else if(rawIn!==null&&rawIn!==undefined&&String(rawIn).trim()!=="") plan.badDates++;
+        else plan.datesMissing++;
+      }
+      if(outTs) plan.outDates++;
       const grade=normGrade(rawGrade);
-      const disposition=normDisp(rawDisp)||"stock";
-      const extra=[!grade&&rawGrade?`Grade (sheet): ${rawGrade}`:"",!normDisp(rawDisp)&&rawDisp?`Status (sheet): ${rawDisp}`:"",rawNote].filter(Boolean).join(" · ");
+      const disposition=normDisp(rawDisp)||(outTs?"shipped":"stock");
+      const extra=[!grade&&rawGrade?`Grade (sheet): ${rawGrade}`:"",
+                   !normDisp(rawDisp)&&rawDisp?`Status (sheet): ${rawDisp}`:"",rawNote].filter(Boolean).join(" · ");
       sns.forEach(sn=>{
         const key=sn.toLowerCase();
         if(seen.has(key)){ plan.dups++; return; }
         seen.add(key);
-        if(existing.has(key)){ plan.skipped++; return; }
+        const existing=bySn[key];
+        if(existing){
+          // only a date correction is offered for units already tracked
+          if(map.updateExisting && (inTs||outTs)){
+            plan.updates.push({sn,unitId:existing.id,inTs:inTs||null,outTs:outTs||null,
+                               currentTs:existing.createdAt,alreadyShipped:existing.disposition==="shipped"});
+          } else plan.skipped++;
+          return;
+        }
         if(locName) plan.newLocs.add(locName);
-        plan.items.push({sn,sku,desc,grade,disposition,locName,note:extra||"Initial inventory import"});
+        plan.items.push({sn,sku,desc,grade,disposition,locName,
+          note:extra||"Initial inventory import",
+          inTs:inTs||null, outTs:outTs||null});
       });
     });
     return plan;
@@ -2050,23 +2113,44 @@
   function renderCatchupPreview(plan,fileName){
     const box=document.getElementById("cu-preview"); if(!box)return;
     const btn=document.getElementById("cu-go");
-    if(!plan.items.length){
-      box.innerHTML=`<div class="pick-empty" style="margin-bottom:12px;">Nothing new to import from “${esc(fileName)}” with that mapping — check the serial column, or every serial may already be in inventory.</div>`;
+    const nothing=!plan.items.length && !plan.updates.length;
+    if(nothing){
+      box.innerHTML=`<div class="pick-empty">Nothing to do from “${esc(fileName)}” with this mapping.${plan.skipped?` ${plan.skipped} serial${plan.skipped===1?" is":"s are"} already in the app — tick the box above to correct their dates.`:" Check the serial column."}</div>`;
       btn.style.display="none"; return;
     }
-    const sample=plan.items.slice(0,8).map(it=>`
-      <div class="pick"><div style="min-width:0;"><span class="sn">${esc(it.sn)}</span>
-        <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(it.desc||it.sku||"")}${it.locName?" · "+esc(it.locName):""}</span></div>
-        ${gradeChip(it.grade)}<span class="pill disp-${it.disposition}" style="flex:none;">${esc(dispLabel[it.disposition])}</span></div>`).join("");
-    const locNote=plan.newLocs.size?`<div class="muted" style="font-size:12.5px;margin:8px 0;">Will create ${plan.newLocs.size} new location${plan.newLocs.size>1?"s":""}: ${esc([...plan.newLocs].join(", "))}</div>`:"";
+    const sample=plan.items.slice(0,6).map(it=>`
+      <div class="pick"><div style="min-width:0;">
+        <span class="sn">${esc(it.sn)}</span>
+        <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(it.desc||it.sku||"")}${it.inTs?" · in "+dstr(it.inTs):" · date not in sheet"}${it.outTs?" · out "+dstr(it.outTs):""}</span>
+      </div>${gradeChip(it.grade)}<span class="pill disp-${it.disposition}" style="flex:none;">${esc(dispLabel[it.disposition]||it.disposition)}</span></div>`).join("");
+    const upSample=plan.updates.slice(0,6).map(u=>`
+      <div class="pick"><div style="min-width:0;">
+        <span class="sn">${esc(u.sn)}</span>
+        <span class="muted" style="font-size:12.5px;display:block;">${dstr(u.currentTs)} → ${u.inTs?dstr(u.inTs):"unchanged"}${u.outTs&&!u.alreadyShipped?" · ship "+dstr(u.outTs):""}</span>
+      </div><span class="pill disp-refurb" style="flex:none;">fix date</span></div>`).join("");
+    const dateNote=[
+      plan.datesFound?`${plan.datesFound} row${plan.datesFound===1?"":"s"} had a usable date`:"",
+      plan.datesMissing?`${plan.datesMissing} had none (today's date will be used)`:"",
+      plan.badDates?`${plan.badDates} date${plan.badDates===1?"":"s"} couldn't be read`:"",
+      plan.outDates?`${plan.outDates} outbound date${plan.outDates===1?"":"s"}`:"",
+    ].filter(Boolean).join(" · ");
     box.innerHTML=`
       <div class="muted" style="font-size:13px;margin:4px 0 10px;">
-        <strong>${plan.items.length}</strong> new unit${plan.items.length===1?"":"s"} will be added.
-        ${plan.skipped?` ${plan.skipped} already in inventory — left untouched.`:""}
-        ${plan.dups?` ${plan.dups} duplicate${plan.dups>1?"s":""} in file skipped.`:""}
+        ${plan.items.length?`<strong>${plan.items.length}</strong> new unit${plan.items.length===1?"":"s"}.`:""}
+        ${plan.updates.length?` <strong>${plan.updates.length}</strong> existing unit${plan.updates.length===1?"":"s"} will have dates corrected.`:""}
+        ${plan.skipped?` ${plan.skipped} already present, untouched.`:""}
+        ${plan.dups?` ${plan.dups} duplicate${plan.dups>1?"s":""} skipped.`:""}
         ${plan.noSn?` ${plan.noSn} row${plan.noSn>1?"s":""} without a serial ignored.`:""}
-      </div>${locNote}${sample}${plan.items.length>8?`<div class="muted" style="font-size:12px;margin-top:6px;">…and ${plan.items.length-8} more</div>`:""}`;
-    btn.style.display="flex"; btn.textContent=`Import ${plan.items.length} unit${plan.items.length===1?"":"s"}`;
+      </div>
+      ${dateNote?`<div class="muted" style="font-size:12px;margin:0 0 10px;">${dateNote}.</div>`:""}
+      ${plan.newLocs.size?`<div class="muted" style="font-size:12.5px;margin:0 0 8px;">Will create ${plan.newLocs.size} location${plan.newLocs.size>1?"s":""}: ${esc([...plan.newLocs].join(", "))}</div>`:""}
+      ${sample}${plan.items.length>6?`<div class="muted" style="font-size:12px;margin:6px 0;">…and ${plan.items.length-6} more new</div>`:""}
+      ${upSample}${plan.updates.length>6?`<div class="muted" style="font-size:12px;margin:6px 0;">…and ${plan.updates.length-6} more corrections</div>`:""}`;
+    btn.style.display="flex";
+    const bits=[];
+    if(plan.items.length) bits.push(`import ${plan.items.length}`);
+    if(plan.updates.length) bits.push(`fix ${plan.updates.length}`);
+    btn.textContent=bits.join(" · ").replace(/^./,c=>c.toUpperCase());
   }
 
   async function parseCatchupFile(file){
@@ -2110,15 +2194,17 @@
   async function doCatchupImport(){
     if(!pendingCatchup){ toast("Load an inventory file first"); return; }
     const plan=buildCatchupPlan(pendingCatchup.rows,readCatchupMap());
-    if(!plan.items.length){ toast("Nothing new to import"); return; }
+    if(!plan.items.length && !plan.updates.length){ toast("Nothing to do"); return; }
+    if(plan.updates.length && !window.confirm(
+        `Correct the received date on ${plan.updates.length} unit${plan.updates.length===1?"":"s"} already in the app? This rewrites those dates and can't be undone.`)) return;
     const btn=document.getElementById("cu-go");
     const prog=t=>{ btn.textContent=t; };
     panelError("cu-error","");
     btn.disabled=true;
+    const stamp=Date.now();
 
     try{
       if(cloudMode){
-        // 1. create any locations named in the sheet — one request
         const needed=[...plan.newLocs].filter(n=>!state.locations.some(l=>l.name.toLowerCase()===n.toLowerCase()));
         if(needed.length){
           prog("Creating locations…");
@@ -2131,37 +2217,65 @@
           return l?l.id:null;
         };
 
-        // 2. all units — batched
-        prog(`Saving ${plan.items.length} unit${plan.items.length===1?"":"s"}…`);
-        const unitRows=plan.items.map(it=>({
-          sn:it.sn, sku:it.sku||"", description:it.desc||"",
-          grade:it.grade||"none", disposition:it.disposition,
-          location_id:locIdFor(it.locName),
-        }));
-        const made=await insertChunked("units", unitRows);
-
-        // 3. one history entry each — batched, matched by serial (not array order)
-        prog("Saving history…");
-        const bySn={};
-        made.forEach(u=>{ bySn[String(u.sn).toLowerCase()]=u; });
-        const evRows=plan.items.map(it=>{
-          const u=bySn[it.sn.toLowerCase()];
-          if(!u) return null;
-          return {
-            unit_id:u.id, event_type:"received", note:it.note,
+        if(plan.items.length){
+          prog(`Saving ${plan.items.length} unit${plan.items.length===1?"":"s"}…`);
+          const unitRows=plan.items.map(it=>({
+            sn:it.sn, sku:it.sku||"", description:it.desc||"",
             grade:it.grade||null, disposition:it.disposition,
-            location_id:u.location_id||null,
-          };
-        }).filter(Boolean);
-        if(evRows.length) await insertChunkedQuiet("unit_events", evRows);
+            location_id:locIdFor(it.locName),
+            created_at:new Date(it.inTs||stamp).toISOString(),
+          }));
+          const made=await insertChunked("units", unitRows);
 
-        // 4. pull the saved truth back down
+          prog("Saving history…");
+          const bySn={};
+          made.forEach(u=>{ bySn[String(u.sn).toLowerCase()]=u; });
+          const evRows=[];
+          plan.items.forEach(it=>{
+            const u=bySn[it.sn.toLowerCase()];
+            if(!u) return;
+            evRows.push({unit_id:u.id,event_type:"received",note:it.note,
+              grade:it.grade||null,disposition:it.outTs?"stock":it.disposition,
+              location_id:u.location_id||null,
+              created_at:new Date(it.inTs||stamp).toISOString()});
+            if(it.outTs){
+              evRows.push({unit_id:u.id,event_type:"shipped",note:"Shipped (from sheet)",
+                disposition:"shipped",created_at:new Date(it.outTs).toISOString()});
+            }
+          });
+          if(evRows.length) await insertChunkedQuiet("unit_events", evRows);
+        }
+
+        if(plan.updates.length){
+          prog(`Correcting ${plan.updates.length} date${plan.updates.length===1?"":"s"}…`);
+          for(const up of plan.updates){
+            if(up.inTs){
+              const iso=new Date(up.inTs).toISOString();
+              const {error}=await sb.from("units").update({created_at:iso}).eq("id",up.unitId);
+              if(error) throw error;
+              const u=state.units.find(x=>x.id===up.unitId);
+              const recv=u&&(u.events||[]).find(e=>e.type==="received");
+              if(recv&&recv.id){
+                const {error:e2}=await sb.from("unit_events").update({created_at:iso}).eq("id",recv.id);
+                if(e2) throw e2;
+              }
+            }
+            if(up.outTs&&!up.alreadyShipped){
+              const {error:e3}=await sb.from("unit_events").insert({
+                unit_id:up.unitId,event_type:"shipped",note:"Shipped (from sheet)",
+                disposition:"shipped",created_at:new Date(up.outTs).toISOString()});
+              if(e3) throw e3;
+              const {error:e4}=await sb.from("units").update({disposition:"shipped"}).eq("id",up.unitId);
+              if(e4) throw e4;
+            }
+          }
+        }
+
         prog("Refreshing…");
         await cloudLoadAll();
-        toast(`Imported ${made.length} unit${made.length===1?"":"s"}`);
       }else{
+        // local mode
         const locCache={};
-        let added=0;
         for(const it of plan.items){
           let locId="";
           if(it.locName){
@@ -2169,18 +2283,41 @@
             locId=locCache[it.locName];
           }
           const unit=receiveUnits([it.sn],{sku:it.sku,desc:it.desc,location:locId,ref:""})[0];
+          const ts=it.inTs||stamp;
+          unit.createdAt=ts;
+          unit.events.forEach(e=>{ if(e.type==="received") e.ts=ts; });
           if(it.grade||it.disposition!=="needs-inspection"||it.note!=="Initial inventory import"){
-            addEvent(unit.id,{note:it.note,grade:it.grade||undefined,disposition:it.disposition});
+            addEvent(unit.id,{note:it.note,grade:it.grade||undefined,disposition:it.outTs?"stock":it.disposition});
           }
-          added++;
+          if(it.outTs){
+            unit.events.push({ts:it.outTs,type:"shipped",by:"You",note:"Shipped (from sheet)",disposition:"shipped"});
+            unit.disposition="shipped";
+          }
+          unit.events.sort((a,b)=>a.ts-b.ts);
         }
-        toast(`Imported ${added} unit${added===1?"":"s"}`);
+        plan.updates.forEach(up=>{
+          const u=state.units.find(x=>x.id===up.unitId); if(!u) return;
+          if(up.inTs){
+            u.createdAt=up.inTs;
+            u.events.forEach(e=>{ if(e.type==="received") e.ts=up.inTs; });
+          }
+          if(up.outTs&&!up.alreadyShipped){
+            u.events.push({ts:up.outTs,type:"shipped",by:"You",note:"Shipped (from sheet)",disposition:"shipped"});
+            u.disposition="shipped";
+          }
+          u.events.sort((a,b)=>a.ts-b.ts);
+        });
+        persist();
       }
+      const bits=[];
+      if(plan.items.length) bits.push(`${plan.items.length} imported`);
+      if(plan.updates.length) bits.push(`${plan.updates.length} date${plan.updates.length===1?"":"s"} corrected`);
+      toast(bits.join(" · ")||"Done");
     }catch(err){
       console.error(err);
-      panelError("cu-error","Import failed — nothing was saved. "+friendlyDbError(err));
+      panelError("cu-error","Import failed. "+friendlyDbError(err));
       btn.disabled=false;
-      btn.textContent=`Import ${plan.items.length} unit${plan.items.length===1?"":"s"}`;
+      renderCatchupPreview(plan,pendingCatchup.fileName);
       return;
     }
 
@@ -2347,7 +2484,7 @@
   }
 
   /* test hook for headless verification (harmless in production) */
-  window.STDebug={buildRmaPlan,processRmaPlan,parseCsv,buildShipPlan,detectShipColumns,
+  window.STDebug={parseSheetDate,buildRmaPlan,processRmaPlan,parseCsv,buildShipPlan,detectShipColumns,
     buildCatchupPlan,detectCatchupColumns,normGrade,normDisp,buildReport,repRange,parseShipNote};
 
   // Flat, normalized export shaped for import into a WMS/ERP rather than back into this app.
