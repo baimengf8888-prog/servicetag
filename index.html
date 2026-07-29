@@ -1080,13 +1080,22 @@
       <div class="muted" style="font-size:12.5px;margin-top:12px;">Tap a location to see what's in it. Name them the way your floor already does.</div>
 
       <div class="card" style="padding:18px;margin-top:26px;">
-        <h3 style="font-size:14.5px;margin-bottom:6px;">Data &amp; backup</h3>
-        <p class="muted" style="font-size:13px;margin:0;">${cloudMode?"Synced to your account. Download a file copy anytime.":"Data lives only in this browser. Download a backup to keep or move it."}</p>
+        <h3 style="font-size:14.5px;margin-bottom:6px;">Backup</h3>
+        <p class="muted" style="font-size:13px;margin:0;">${cloudMode?"Synced to your account. A file copy is still worth keeping.":"Data lives only in this browser. Download a backup to keep or move it."}</p>
         <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;">
           <button class="btn" data-act="export">⤓ Download backup</button>
           <button class="btn ghost" data-act="import">Restore from file…</button>
         </div>
+        <p class="muted" style="font-size:12px;margin:10px 0 0;">Restores back into ServiceTag. Not readable by other systems.</p>
         <input type="file" id="import-file" accept="application/json,.json" style="display:none;">
+
+        <hr class="hr">
+        <h3 style="font-size:14.5px;margin-bottom:6px;">Export to another system</h3>
+        <p class="muted" style="font-size:13px;margin:0;">Every unit and its full history as a normalized spreadsheet, ready to load into a WMS, ERP, or database.</p>
+        <div style="margin-top:14px;">
+          <button class="btn" data-act="migrate">⤓ Export for migration</button>
+        </div>
+        <p class="muted" style="font-size:12px;margin:10px 0 0;">Includes a README sheet defining every field.</p>
       </div>
     </div>`;
   };
@@ -1201,6 +1210,7 @@
     }
     if(e.target.id==="loc-add"){ addLoc(); return; }
     if(e.target.closest("[data-act='export']")){ exportData(); return; }
+    if(e.target.closest("[data-act='migrate']")){ exportForMigration(); return; }
     if(e.target.closest("[data-act='import']")){ const f=document.getElementById("import-file"); if(f) f.click(); return; }
 
     const seg=e.target.closest("#rcv-seg button");
@@ -2131,6 +2141,94 @@
   /* test hook for headless verification (harmless in production) */
   window.STDebug={buildRmaPlan,processRmaPlan,parseCsv,buildShipPlan,detectShipColumns,
     buildCatchupPlan,detectCatchupColumns,normGrade,normDisp,buildReport,repRange,parseShipNote};
+
+  // Flat, normalized export shaped for import into a WMS/ERP rather than back into this app.
+  function exportForMigration(){
+    if(!window.XLSX){ toast("Spreadsheet library didn't load — reconnect and retry"); return; }
+    const wb=XLSX.utils.book_new();
+    const today=dstr(Date.now());
+
+    const readme=[
+      {Field:"— WHAT THIS FILE IS —",Meaning:""},
+      {Field:"Purpose",Meaning:"A normalized export of all inventory and its history, for loading into another system (WMS, ERP, database)."},
+      {Field:"Generated",Meaning:dtstr(Date.now())},
+      {Field:"Units",Meaning:String(state.units.length)},
+      {Field:"History entries",Meaning:String(state.units.reduce((n,u)=>n+(u.events?u.events.length:0),0))},
+      {Field:"",Meaning:""},
+      {Field:"— SHEET: Units —",Meaning:"One row per physical unit. Current state only."},
+      {Field:"serial_number",Meaning:"Unique identifier for the physical unit. Primary key."},
+      {Field:"item_number",Meaning:"Part number / SKU. Maps to the item master in most systems."},
+      {Field:"description",Meaning:"Free-text description of the part."},
+      {Field:"condition_grade",Meaning:"A, B, C, D, scrap, or blank if never inspected."},
+      {Field:"status",Meaning:"needs-inspection, stock, refurb, scrap, or shipped."},
+      {Field:"location",Meaning:"Location name as used on the floor. Blank means unassigned."},
+      {Field:"quantity",Meaning:"Always 1 — every row is a single serialized unit, not a pooled quantity."},
+      {Field:"uom",Meaning:"Unit of measure. Always EA (each)."},
+      {Field:"date_received",Meaning:"ISO date the unit first entered the system."},
+      {Field:"last_activity",Meaning:"ISO datetime of the most recent history entry."},
+      {Field:"history_entry_count",Meaning:"Number of rows for this serial in the Transactions sheet."},
+      {Field:"",Meaning:""},
+      {Field:"— SHEET: Transactions —",Meaning:"One row per event. Append-only history; join to Units on serial_number."},
+      {Field:"transaction_date",Meaning:"ISO datetime the entry was recorded."},
+      {Field:"transaction_type",Meaning:"received, inspected, graded, moved, note, or shipped."},
+      {Field:"condition_grade_set",Meaning:"Grade assigned by this entry, if any."},
+      {Field:"status_set",Meaning:"Status assigned by this entry, if any."},
+      {Field:"location_set",Meaning:"Location assigned by this entry, if any."},
+      {Field:"notes",Meaning:"Free-text note recorded at the time — the failure description, findings, or shipment details."},
+      {Field:"recorded_by",Meaning:"Who logged the entry."},
+      {Field:"",Meaning:""},
+      {Field:"— SHEET: Locations —",Meaning:"Distinct locations and how many units each holds."},
+      {Field:"",Meaning:""},
+      {Field:"NOTE ON DATES",Meaning:"All dates are ISO 8601 (YYYY-MM-DD HH:MM), unambiguous across regions."},
+      {Field:"NOTE ON CSV",Meaning:"If the target system wants CSV, open a sheet in Excel and Save As > CSV."},
+    ];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(readme),"README");
+
+    const units=state.units.map(u=>({
+      serial_number:u.sn,
+      item_number:u.sku||"",
+      description:u.desc||"",
+      condition_grade:u.grade==="none"?"":u.grade,
+      status:u.disposition,
+      location:locName(u.location)==="Unassigned"?"":locName(u.location),
+      quantity:1,
+      uom:"EA",
+      date_received:dstr(u.createdAt),
+      last_activity:dtstr(lastTs(u)),
+      history_entry_count:(u.events||[]).length,
+    }));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(units.length?units:[{serial_number:""}]),"Units");
+
+    const tx=[];
+    state.units.forEach(u=>{
+      (u.events||[]).forEach(e=>{
+        tx.push({
+          serial_number:u.sn,
+          item_number:u.sku||"",
+          transaction_date:dtstr(e.ts),
+          transaction_type:e.type,
+          condition_grade_set:e.grade||"",
+          status_set:e.disposition||"",
+          location_set:e.location?locName(e.location):"",
+          notes:e.note||"",
+          recorded_by:e.by||"",
+        });
+      });
+    });
+    tx.sort((a,b)=>a.transaction_date.localeCompare(b.transaction_date));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(tx.length?tx:[{serial_number:""}]),"Transactions");
+
+    const locs=state.locations.map(l=>({
+      location:l.name,
+      unit_count:state.units.filter(u=>u.location===l.id).length,
+    }));
+    const unassigned=state.units.filter(u=>!u.location).length;
+    if(unassigned) locs.push({location:"(unassigned)",unit_count:unassigned});
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(locs.length?locs:[{location:""}]),"Locations");
+
+    XLSX.writeFile(wb,`ServiceTag-migration-${today}.xlsx`);
+    toast(`Exported ${units.length} units and ${tx.length} history entries`);
+  }
 
   function exportData(){
     const payload={app:"servicetag",version:1,exportedAt:new Date().toISOString(),locations:state.locations,units:state.units};
