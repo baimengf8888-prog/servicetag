@@ -647,6 +647,25 @@
       disposition:u.disposition, location:u.location_id||"", createdAt:new Date(u.created_at).getTime(), events };
   }
   const PAGE = 1000; // PostgREST's default max rows per request — page past it, don't hit it
+  // Fetch every page concurrently when we can learn the row count up front;
+  // fall back to sequential paging if the count isn't available.
+  async function fetchAllFast(table, selectStr, orderCol, orderOpts){
+    let total=null;
+    try{
+      const {count,error}=await sb.from(table).select("id",{count:"exact",head:true});
+      if(!error && typeof count==="number") total=count;
+    }catch(e){ /* fall through to sequential */ }
+    if(total===null) return fetchAllPages(table, selectStr, orderCol, orderOpts);
+    if(total===0) return [];
+    const starts=[];
+    for(let from=0; from<total; from+=PAGE) starts.push(from);
+    const results=await Promise.all(starts.map(from=>
+      sb.from(table).select(selectStr).order(orderCol,orderOpts).range(from, from+PAGE-1)
+    ));
+    const all=[];
+    results.forEach(r=>{ if(r.error) throw r.error; all.push(...(r.data||[])); });
+    return all;
+  }
   async function fetchAllPages(table, selectStr, orderCol, orderOpts){
     let all=[], from=0;
     while(true){
@@ -658,15 +677,32 @@
     }
     return all;
   }
-  async function cloudLoadAll(){
+  let eventsLoaded=true;   // false while history is still streaming in after sign-in
+
+  // Fast first paint: units, locations and grades, without the (much larger) history.
+  async function cloudLoadCore(){
     const [locs, grades, units] = await Promise.all([
-      fetchAllPages("locations","*","created_at",{}),
-      fetchAllPages("grades","*","sort_order",{}),
-      fetchAllPages("units","*, unit_events(*)","created_at",{ascending:false}),
+      fetchAllFast("locations","*","created_at",{}),
+      fetchAllFast("grades","*","sort_order",{}),
+      fetchAllFast("units","*","created_at",{ascending:false}),
     ]);
     state.locations=locs.map(l=>({id:l.id,name:l.name}));
     state.grades=grades.map(g=>({id:g.id,name:g.name,color:g.color,sort:g.sort_order}));
-    state.units=units.map(mapDbUnit);
+    state.units=units.map(u=>mapDbUnit(Object.assign({},u,{unit_events:[]})));
+  }
+
+  // Then attach history in the background and merge it in.
+  async function cloudLoadEvents(){
+    const rows=await fetchAllFast("unit_events","*","created_at",{});
+    const byUnit={};
+    rows.forEach(e=>{ (byUnit[e.unit_id]=byUnit[e.unit_id]||[]).push(mapDbEvent(e)); });
+    state.units.forEach(u=>{ u.events=(byUnit[u.id]||[]).sort((a,b)=>a.ts-b.ts); });
+    eventsLoaded=true;
+  }
+
+  async function cloudLoadAll(){
+    await cloudLoadCore();
+    await cloudLoadEvents();
   }
   async function cloudAddGrade(name,color,sort){
     const {data,error}=await sb.from("grades").insert({name,color,sort_order:sort}).select().single();
@@ -867,7 +903,7 @@
       <div class="section-h"><h2>Recent activity</h2><span class="line"></span>
         <button class="btn sm" data-act="report">⤓ Report</button></div>
       <div class="card" style="padding:6px 18px;">
-        <div class="feed">${feed||'<div class="muted" style="padding:14px 0;">No activity yet.</div>'}</div>
+        <div class="feed">${feed||`<div class="muted" style="padding:14px 0;">${eventsLoaded?"No activity yet.":"Loading activity…"}</div>`}</div>
       </div>`;
   };
 
@@ -914,8 +950,9 @@
     if(!u) return `<button class="back" data-view="inventory">← Inventory</button><div class="empty">Unit not found.</div>`;
     const evs=(u.events||[]).slice().reverse();
     if(!evs.length){
-      // defensive: a unit whose history failed to save should say so, not look blank
-      evs.push({ts:u.createdAt,type:"received",by:"—",note:"No history entries were saved for this unit."});
+      evs.push(eventsLoaded
+        ? {ts:u.createdAt,type:"received",by:"—",note:"No history entries were saved for this unit."}
+        : {ts:u.createdAt,type:"received",by:"—",note:"Loading history…"});
     }
     const timeline=evs.map(e=>{
       const changes=[];
@@ -2241,6 +2278,7 @@
   }
 
   function openReport(){
+    if(!eventsLoaded){ toast("Still loading history — try again in a moment"); return; }
     repPeriod="day";
     document.querySelectorAll("#rep-period .pp").forEach(b=>b.classList.toggle("sel",b.dataset.period==="day"));
     document.getElementById("rep-custom").style.display="none";
@@ -2315,6 +2353,7 @@
   // Flat, normalized export shaped for import into a WMS/ERP rather than back into this app.
   function exportForMigration(){
     if(!window.XLSX){ toast("Spreadsheet library didn't load — reconnect and retry"); return; }
+    if(!eventsLoaded){ toast("Still loading history — try again in a moment"); return; }
     const wb=XLSX.utils.book_new();
     const today=dstr(Date.now());
 
@@ -2401,6 +2440,7 @@
   }
 
   function exportData(){
+    if(!eventsLoaded){ toast("Still loading history — try again in a moment"); return; }
     const payload={app:"servicetag",version:2,exportedAt:new Date().toISOString(),grades:state.grades,locations:state.locations,units:state.units};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
@@ -2454,6 +2494,7 @@
     renderAccount(); go("dashboard");
   }
   let emailMode="signin";   // or "signup"
+  let authBusy=false;       // true while a sign-in/sign-up round trip is in flight
   function liMsg(text,kind){
     const el=document.getElementById("li-msg"); if(!el)return;
     el.textContent=text||"";
@@ -2493,6 +2534,8 @@
     if(!email||!pass){ liMsg("Enter an email and password."); return; }
     if(pass.length<6){ liMsg("Password must be at least 6 characters."); return; }
     if(!BACKEND){ liMsg("Cloud accounts aren't configured yet — use \u201Ccontinue without an account\u201D."); return; }
+    if(authBusy) return;                     // ignore extra taps while a sign-in is in flight
+    authBusy=true;
     const btn=document.getElementById("li-email-go");
     btn.disabled=true; btn.textContent = emailMode==="signin" ? "Signing in…" : "Creating…";
     liMsg("");
@@ -2503,23 +2546,33 @@
         if(data && data.user && !data.session){
           setEmailMode("signin");
           liMsg("Account created. Check your email to confirm, then sign in.","ok");
+          releaseAuth();
         }
         // if a session came back, onAuthStateChange takes over from here
       }else{
         const {error}=await sb.auth.signInWithPassword({email,password:pass});
         if(error) throw error;
       }
+      // success: leave the button disabled — the screen is about to change once
+      // the account's data has loaded. releaseAuth() runs if anything goes wrong.
     }catch(err){
       const m=(err&&err.message)||"Something went wrong.";
       liMsg(/Invalid login/i.test(m) ? "Email or password is incorrect." : m);
-    }finally{
-      btn.disabled=false;
-      // re-derive from the current mode; it may have changed during success handling
-      btn.textContent = emailMode==="signin" ? "Sign in" : "Create account";
+      releaseAuth();
     }
+  }
+  function releaseAuth(){
+    authBusy=false;
+    const btn=document.getElementById("li-email-go");
+    if(btn){ btn.disabled=false; btn.textContent = emailMode==="signin" ? "Sign in" : "Create account"; }
+  }
+  function authProgress(text){
+    const btn=document.getElementById("li-email-go");
+    if(btn) btn.textContent=text;
   }
 
   function signIn(provider){
+    if(authBusy) return;
     if(provider==="Local"){
       state.session={provider,since:now()}; persist(); enterApp();
       toast("Working on this device"); return;
@@ -2550,9 +2603,33 @@
     const user=session.user||{};
     const prov=(user.app_metadata&&user.app_metadata.provider)||"account";
     state.session={provider:prov.charAt(0).toUpperCase()+prov.slice(1),email:user.email||"",real:true,since:now()};
-    try{ await cloudLoadAll(); }
-    catch(err){ console.error(err); toast("⚠ Couldn't load your data — check connection"); }
+
+    // Load only what's needed to show the app, so sign-in doesn't wait on history.
+    authProgress("Loading your inventory…");
+    eventsLoaded=false;
+    try{ await cloudLoadCore(); }
+    catch(err){
+      console.error(err);
+      cloudMode=false; state.session=null; eventsLoaded=true;
+      liMsg("Signed in, but your data couldn't load. Check your connection and try again.");
+      releaseAuth();
+      return;
+    }
+
+    authBusy=false;
     enterApp();
+
+    // History streams in afterwards; refresh whatever's on screen once it lands.
+    cloudLoadEvents().then(()=>{
+      if(["dashboard","unit","audit"].includes(state.view)) go(state.view);
+      const q=document.getElementById("audit-queue");
+      if(q) refreshAuditQueue();
+    }).catch(err=>{
+      console.error(err);
+      eventsLoaded=true;
+      toast("⚠ Couldn't load unit history — reload to retry");
+    });
+
     // One-time offer: move device-only data into the account.
     try{
       const flag="servicetag:migrated:"+user.id;
@@ -2565,7 +2642,7 @@
             await cloudLoadAll(); go("dashboard");
             toast(`Moved ${n} unit${n>1?"s":""} into your account`);
           }
-          localStorage.setItem(flag,"1");   // asked once, either way
+          localStorage.setItem(flag,"1");
         } else localStorage.setItem(flag,"1");
       }
     }catch(e){ console.error(e); }
