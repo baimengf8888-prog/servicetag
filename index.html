@@ -272,7 +272,7 @@
   .seg button.on{background:var(--accent);color:#fff;}
   .form-card{padding:22px;max-width:560px;}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  .ship-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;}
+  .ship-grid,.work-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start;}
 
   .pick{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:8px;}
   .pick .sn{font-family:"IBM Plex Mono",monospace;font-weight:500;}
@@ -327,6 +327,14 @@
   .rep-stat:last-child{border-bottom:none;}
   .rep-stat .n{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:17px;}
   input[type=date]{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--radius);background:var(--surface);color:var(--ink);font-family:inherit;font-size:15px;}
+  /* subtle scrollbars that follow the theme instead of the OS default */
+  #loc-units,.modal,.content,#audit-queue,.mobile-nav{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent;}
+  #loc-units::-webkit-scrollbar,.modal::-webkit-scrollbar,.mobile-nav::-webkit-scrollbar{width:8px;height:8px;}
+  #loc-units::-webkit-scrollbar-track,.modal::-webkit-scrollbar-track,.mobile-nav::-webkit-scrollbar-track{background:transparent;}
+  #loc-units::-webkit-scrollbar-thumb,.modal::-webkit-scrollbar-thumb,.mobile-nav::-webkit-scrollbar-thumb{
+    background:var(--line-2);border-radius:99px;border:2px solid transparent;background-clip:content-box;
+  }
+  #loc-units::-webkit-scrollbar-thumb:hover,.modal::-webkit-scrollbar-thumb:hover{background:var(--muted);background-clip:content-box;}
   .mobile-nav{display:none;}
 
   .login{position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;background:var(--paper);padding:26px;padding-top:max(40px,6vh);padding-bottom:calc(40px + env(safe-area-inset-bottom));z-index:100;overflow-y:auto;-webkit-overflow-scrolling:touch;}
@@ -368,7 +376,7 @@
     .stat-row{grid-template-columns:repeat(2,1fr);}
     .detail-grid{grid-template-columns:1fr;}
     .two{grid-template-columns:1fr;}
-    .ship-grid{grid-template-columns:1fr;gap:16px;}
+    .ship-grid,.work-grid{grid-template-columns:1fr;gap:16px;}
     .gp{min-height:42px;min-width:52px;}
     .btn{padding:11px 16px;}
     .btn.sm{padding:8px 13px;}
@@ -727,7 +735,7 @@
     document.getElementById("crumb").textContent=view==="unit"?"› inventory":"";
     document.getElementById("nav-inv").textContent=state.units.length;
     document.getElementById("content").innerHTML=VIEW[view]?VIEW[view]():"";
-    if(view==="audit"){const i=document.getElementById("scan-input"); if(i) i.focus();}
+    if(view==="audit"){queueShown=QUEUE_PAGE;const i=document.getElementById("scan-input"); if(i) i.focus();}
     window.scrollTo(0,0);
   }
 
@@ -880,35 +888,64 @@
       </div>`;
   };
 
+  function renderRecentReceipts(){
+    const recent=state.units.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,10);
+    if(!recent.length){
+      return `<div class="card" style="padding:18px;">
+        <h3 style="font-size:14.5px;margin-bottom:8px;">Recently received</h3>
+        <div class="muted" style="font-size:13px;">Units you receive will appear here.</div>
+      </div>`;
+    }
+    return `<div class="card" style="padding:18px;">
+      <h3 style="font-size:14.5px;margin-bottom:12px;">Recently received</h3>
+      ${recent.map(u=>`
+        <div class="pick" data-unit="${u.id}" style="cursor:pointer;">
+          <div style="min-width:0;">
+            <span class="sn">${esc(u.sn)}</span>
+            <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.desc||u.sku||"")} · ${fmt(u.createdAt)}</span>
+          </div>
+          <span style="flex:none;">${dispPill(u.disposition)}</span>
+        </div>`).join("")}
+    </div>`;
+  }
+
   VIEW.receive=function(){
     const locOpts=state.locations.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join("");
     const locField=state.locations.length
       ? `<label class="field"><span>Receiving location</span><select id="rcv-loc">${locOpts}</select></label>`
       : `<label class="field"><span>Receiving location</span><div class="muted" style="font-size:13px;padding:9px 0;">No locations yet — units go to <em>Unassigned</em>.</div></label>`;
     return `
-      <div class="card form-card">
-        <div class="seg" id="rcv-seg"><button class="on" data-mode="manual">Pick &amp; scan</button><button data-mode="file">Batch upload</button></div>
-        <div id="rcv-manual">
-        <div id="rcv-fields">
-          <label class="field"><span>Serial number</span>
-            <input type="text" id="rcv-sns" autocapitalize="characters" autocorrect="off" spellcheck="false" style="font-family:'IBM Plex Mono',monospace;"></label>
-          <div class="two">
-            <label class="field"><span>Part / SKU</span><input type="text" id="rcv-sku" ></label>
-            ${locField}
+      <div class="seg" id="rcv-seg"><button class="on" data-mode="manual">Pick &amp; scan</button><button data-mode="file">Batch upload</button></div>
+      <div class="work-grid">
+        <div class="card form-card" style="max-width:none;">
+          <div id="rcv-manual">
+            <label class="field"><span>Serial number</span>
+              <input type="text" id="rcv-sns" autocapitalize="characters" autocorrect="off" spellcheck="false" style="font-family:'IBM Plex Mono',monospace;"></label>
+            <div class="two">
+              <label class="field"><span>Part / SKU</span><input type="text" id="rcv-sku"></label>
+              ${locField}
+            </div>
+            <label class="field"><span>Description</span><input type="text" id="rcv-desc"></label>
+            <label class="field"><span>Reference <span class="muted">(optional)</span></span><input type="text" id="rcv-ref"></label>
+            <button class="btn primary" id="rcv-go" style="width:100%;justify-content:center;">Receive</button>
           </div>
-          <label class="field"><span>Description</span><input type="text" id="rcv-desc" ></label>
-          <label class="field"><span>Reference <span class="muted">(optional)</span></span><input type="text" id="rcv-ref" ></label>
+          <div id="catchup-panel" style="display:none;">
+            <label class="field"><span>Spreadsheet (.xls, .xlsx, .csv)</span>
+              <input type="file" id="cu-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
+            <div id="cu-mapping"></div>
+            <div class="muted" style="font-size:12.5px;margin-top:6px;">Serials already in the app are skipped. New locations are created automatically.</div>
+          </div>
         </div>
-        <button class="btn primary" id="rcv-go" style="width:100%;justify-content:center;">Receive</button>
-        </div>
-        <div id="catchup-panel" style="display:none;">
-          <label class="field"><span>Spreadsheet (.xls, .xlsx, .csv)</span>
-            <input type="file" id="cu-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
-          <div id="cu-mapping"></div>
-          <div id="cu-error"></div>
-          <div id="cu-preview"></div>
-          <button class="btn primary" id="cu-go" style="width:100%;justify-content:center;display:none;">Import</button>
-          <div class="muted" style="font-size:12.5px;margin-top:12px;">Serials already in the app are skipped. New locations are created automatically.</div>
+        <div id="rcv-side">
+          <div id="rcv-side-manual">${renderRecentReceipts()}</div>
+          <div id="rcv-side-file" style="display:none;">
+            <div class="card" style="padding:18px;">
+              <h3 style="font-size:14.5px;margin-bottom:10px;">Preview</h3>
+              <div id="cu-error"></div>
+              <div id="cu-preview"><div class="muted" style="font-size:13px;">Choose a file to see what will be imported.</div></div>
+              <button class="btn primary" id="cu-go" style="width:100%;justify-content:center;display:none;margin-top:14px;">Import</button>
+            </div>
+          </div>
         </div>
       </div>`;
   };
@@ -939,14 +976,19 @@
           <button class="btn primary" id="ship-go" ${state.pick.length?"":"disabled"} style="width:100%;justify-content:center;${state.pick.length?"":"opacity:.5;cursor:default;"}">Ship ${state.pick.length||""} unit${state.pick.length===1?"":"s"}</button>
         </div>
       </div>
-      <div class="card form-card" id="ship-filepanel" style="display:none;">
-        <label class="field"><span>Packing list / shipping record (.xls, .xlsx, or .csv)</span>
-          <input type="file" id="sf-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
-        <div id="sf-mapping"></div>
-        <div id="sf-error"></div>
-        <div id="sf-preview"></div>
-        <button class="btn primary" id="sf-go" style="width:100%;justify-content:center;display:none;">Ship</button>
-        <div class="muted" style="font-size:12.5px;margin-top:12px;">Fix the column guesses if needed. Serials not in inventory are flagged and skipped.</div>
+      <div class="work-grid" id="ship-filepanel" style="display:none;">
+        <div class="card form-card" style="max-width:none;">
+          <label class="field"><span>Packing list / shipping record (.xls, .xlsx, .csv)</span>
+            <input type="file" id="sf-file" accept=".xls,.xlsx,.csv" style="padding:8px;"></label>
+          <div id="sf-mapping"></div>
+          <div class="muted" style="font-size:12.5px;margin-top:6px;">Fix the column guesses if needed. Serials not in inventory are flagged and skipped.</div>
+        </div>
+        <div class="card" style="padding:18px;">
+          <h3 style="font-size:14.5px;margin-bottom:10px;">Preview</h3>
+          <div id="sf-error"></div>
+          <div id="sf-preview"><div class="muted" style="font-size:13px;">Choose a file to see what will ship.</div></div>
+          <button class="btn primary" id="sf-go" style="width:100%;justify-content:center;display:none;margin-top:14px;">Ship</button>
+        </div>
       </div>`;
   };
 
@@ -956,8 +998,40 @@
         <input type="search" id="scan-input" placeholder="Scan or type a serial" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" style="width:100%;"></div>
       <div class="scan-hint">Scan or type a serial to pull up its history.</div>
       <div id="audit-result"></div>
+      <div id="audit-queue">${renderAuditQueue()}</div>
     </div>`;
   };
+
+  const QUEUE_PAGE=25;
+  let queueShown=QUEUE_PAGE;
+  function renderAuditQueue(){
+    const pending=state.units.filter(u=>u.disposition==="needs-inspection");
+    if(!pending.length){
+      return `<div class="section-h" style="margin-top:26px;"><h2>Waiting on inspection</h2><span class="line"></span></div>
+        <div class="pick-empty">Nothing waiting. Scan a serial above to log an entry.</div>`;
+    }
+    pending.sort((a,b)=>lastTs(a)-lastTs(b));   // oldest first — longest waiting at the top
+    const shown=pending.slice(0,queueShown);
+    const rows=shown.map(u=>`
+      <div class="pick" data-queue-unit="${u.id}" style="cursor:pointer;">
+        <div style="min-width:0;">
+          <span class="sn">${esc(u.sn)}</span>
+          <span class="muted" style="font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(u.desc||u.sku||"")} · in since ${fmt(lastTs(u))}</span>
+        </div>
+        <span style="display:flex;align-items:center;gap:6px;flex:none;">${gradeChip(u.grade)}<span class="loc-go">›</span></span>
+      </div>`).join("");
+    return `<div class="section-h" style="margin-top:26px;">
+        <h2>Waiting on inspection</h2><span class="line"></span>
+        <span class="mono muted" style="font-size:12.5px;">${pending.length}</span>
+      </div>
+      ${rows}
+      ${pending.length>shown.length?`<button class="btn ghost sm" id="queue-more" style="width:100%;justify-content:center;">Show ${Math.min(QUEUE_PAGE,pending.length-shown.length)} more (${pending.length-shown.length} left)</button>`:""}
+      <div class="muted" style="font-size:12px;margin-top:10px;">Oldest first. Tap one to grade it without scanning.</div>`;
+  }
+  function refreshAuditQueue(){
+    const box=document.getElementById("audit-queue");
+    if(box) box.innerHTML=renderAuditQueue();
+  }
 
   function renderAuditResult(u){
     const box=document.getElementById("audit-result");
@@ -1069,6 +1143,7 @@
       if(!payload.note&&!payload.grade){toast("Add a note or grade first");return;}
       addEvent(id,payload); auditGrade=null; toast("Stamped · "+u.sn);
       renderAuditResult(state.units.find(x=>x.id===id));
+      refreshAuditQueue();
       const si=document.getElementById("scan-input");
       if(si){ si.focus(); si.select(); }
       return;
@@ -1083,7 +1158,7 @@
       document.querySelectorAll("#ship-seg button").forEach(b=>b.classList.remove("on"));
       sseg.classList.add("on");
       const man=document.getElementById("ship-manual"), fp=document.getElementById("ship-filepanel");
-      if(sseg.dataset.mode==="file"){ man.style.display="none"; fp.style.display="block"; }
+      if(sseg.dataset.mode==="file"){ man.style.display="none"; fp.style.display="grid"; }
       else { man.style.display="grid"; fp.style.display="none"; }
       return;
     }
@@ -1098,6 +1173,16 @@
     if(e.target.id==="loc-modal"){ closeLocation(); return; }
     if(e.target.closest("[data-act='loc-delete']")){ deleteOpenLocation(); return; }
     if(e.target.id==="loc-more"){ locShown+=LOC_PAGE; renderLocUnits(); return; }
+    const qUnit=e.target.closest("[data-queue-unit]");
+    if(qUnit){
+      const u=state.units.find(x=>x.id===qUnit.dataset.queueUnit);
+      if(u){ auditGrade=null; renderAuditResult(u); window.scrollTo(0,0);
+             const si=document.getElementById("scan-input"); if(si) si.value=u.sn; }
+      return;
+    }
+    if(e.target.id==="queue-more"){ queueShown+=QUEUE_PAGE; refreshAuditQueue(); return; }
+    const sideUnit=e.target.closest("#rcv-side [data-unit]");
+    if(sideUnit){ go("unit",sideUnit.dataset.unit); return; }
     const locUnit=e.target.closest("#loc-units [data-unit]");
     if(locUnit){ closeLocation(); go("unit",locUnit.dataset.unit); return; }
     const locRow=e.target.closest("[data-loc]");
@@ -1123,8 +1208,12 @@
       document.querySelectorAll("#rcv-seg button").forEach(b=>b.classList.remove("on"));
       seg.classList.add("on");
       const manual=document.getElementById("rcv-manual"), cu=document.getElementById("catchup-panel");
-      if(seg.dataset.mode==="file"){ manual.style.display="none"; cu.style.display="block"; }
-      else { manual.style.display="block"; cu.style.display="none"; }
+      const sideM=document.getElementById("rcv-side-manual"), sideF=document.getElementById("rcv-side-file");
+      const isFile=seg.dataset.mode==="file";
+      manual.style.display=isFile?"none":"block";
+      cu.style.display=isFile?"block":"none";
+      if(sideM) sideM.style.display=isFile?"none":"block";
+      if(sideF) sideF.style.display=isFile?"block":"none";
       return;
     }
   });
@@ -1212,7 +1301,16 @@
       receiveUnits(fresh,common);
     }
     toast(`Received ${fresh.length} unit${fresh.length>1?"s":""}${dup?` · skipped ${dup} duplicate`:""}`);
-    go("inventory");
+    // stay on Receive so the next unit can be entered immediately
+    const snField=document.getElementById("rcv-sns");
+    if(snField){
+      snField.value="";
+      const side=document.getElementById("rcv-side-manual");
+      if(side) side.innerHTML=renderRecentReceipts();
+      snField.focus();
+    }else{
+      go("inventory");
+    }
   }
 
   function shipMatches(q){
